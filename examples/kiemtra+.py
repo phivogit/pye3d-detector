@@ -60,7 +60,7 @@ def process_videos():
                 confidence = result_3d['confidence']
                 sphere_center = result_3d['sphere']['center']
 
-                if confidence > 0.95:
+                if confidence > 0.94:
                     output_data.append({
                         'frame': frame_count,
                         'confidence': confidence,
