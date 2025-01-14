@@ -90,17 +90,17 @@ class Detector3D:
     def __init__(
         self,
         camera: CameraModel,
-        threshold_swirski=0.7,
+        threshold_swirski=0.9,
         threshold_kalman=0.98,
         threshold_short_term=0.8,
-        threshold_long_term=0.98,
+        threshold_long_term=0.95,
         long_term_buffer_size=30,
         long_term_forget_time=5,
         long_term_forget_observations=300,
         long_term_mode: DetectorMode = DetectorMode.blocking,
         model_update_interval_long_term=1.0,
         model_update_interval_ult_long_term=10.0,
-        model_warmup_duration=5.0,
+        model_warmup_duration=20.0,
         calculate_rms_residual=False,
     ):
         self._camera = camera
@@ -442,8 +442,8 @@ class Detector3D:
                     edge = project_point_into_image_plane(
                         edge, self.camera.focal_length
                     ).astype(np.int)
-                    edge[0] += self.camera.resolution[0] / 2
-                    edge[1] += self.camera.resolution[1] / 2
+                    edge[0] += 160
+                    edge[1] += 120
                     cv2.rectangle(
                         frame_,
                         (edge[0] - roi[2], edge[1] - roi[0]),
@@ -456,8 +456,8 @@ class Detector3D:
                     edge = project_point_into_image_plane(
                         edge, self.camera.focal_length
                     ).astype(np.int)
-                    edge[0] += self.camera.resolution[0] / 2
-                    edge[1] += self.camera.resolution[1] / 2
+                    edge[0] += 160
+                    edge[1] += 120
                     cv2.rectangle(
                         frame_,
                         (edge[0] - roi[2], edge[1] - roi[0]),
@@ -589,7 +589,7 @@ class Detector3D:
         is_center_x_in_range = -15 <= prediction_corrected.sphere_center[0] <= 15
         is_center_y_in_range = -10 <= prediction_corrected.sphere_center[1] <= 10
         is_center_z_in_range = 15 <= prediction_corrected.sphere_center[2] <= 75
-        is_diameter_in_range = 1.0 <= result["diameter_3d"] <= 9.0
+        is_diameter_in_range = 0.15 <= result["diameter_3d"] <= 3
         parameters_in_range = (
             is_center_x_in_range,
             is_center_y_in_range,

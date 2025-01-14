@@ -1,56 +1,175 @@
-import argparse
-
 import cv2
-from pupil_detectors import Detector2D
-
+import threading
+import argparse
+import numpy as np
+from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
 
+class SharedGazeData:
+    def __init__(self):
+        self.gaze_point = None
+        self.lock = threading.Lock()
 
-def main(eye_video_path):
-    # create 2D detector
-    detector_2d = Detector2D()
-    # create pye3D detector
-    camera = CameraModel(focal_length=561.5, resolution=[400, 400])
-    detector_3d = Detector3D(camera=camera, long_term_mode=DetectorMode.blocking)
-    # load eye video
-    eye_video = cv2.VideoCapture(eye_video_path)
-    # read each frame of video and run pupil detectors
-    while eye_video.isOpened():
-        frame_number = eye_video.get(cv2.CAP_PROP_POS_FRAMES)
-        fps = eye_video.get(cv2.CAP_PROP_FPS)
-        ret, eye_frame = eye_video.read()
-        if ret:
-            # read video frame as numpy array
-            grayscale_array = cv2.cvtColor(eye_frame, cv2.COLOR_BGR2GRAY)
-            # run 2D detector on video frame
-            result_2d = detector_2d.detect(grayscale_array)
-            result_2d["timestamp"] = frame_number / fps
-            # pass 2D detection result to 3D detector
-            result_3d = detector_3d.update_and_detect(result_2d, grayscale_array)
-            ellipse_3d = result_3d["ellipse"]
-            # draw 3D detection result on eye frame
-            cv2.ellipse(
-                eye_frame,
-                tuple(int(v) for v in ellipse_3d["center"]),
-                tuple(int(v / 2) for v in ellipse_3d["axes"]),
-                ellipse_3d["angle"],
-                0,
-                360,  # start/end angle for drawing
-                (0, 255, 0),  # color (BGR): red
-            )
-            # show frame
-            cv2.imshow("eye_frame", eye_frame)
-            # press esc to exit
-            if cv2.waitKey(1) & 0xFF == 27:
+    def update(self, gaze_point):
+        with self.lock:
+            self.gaze_point = gaze_point
+
+    def get(self):
+        with self.lock:
+            return self.gaze_point
+
+class CamThread(threading.Thread):
+    def __init__(self, preview_name, cam_id, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None):
+        threading.Thread.__init__(self)
+        self.preview_name = preview_name
+        self.cam_id = cam_id
+        self.resolution = resolution
+        self.is_eye_cam = is_eye_cam
+        self.shared_gaze_data = shared_gaze_data
+        self.running = True
+        self.debug_info = ""
+        self.camera_matrix = camera_matrix
+        self.dist_coeffs = dist_coeffs
+
+        if is_eye_cam:
+            self.detector_2d = Detector2D()
+            self.camera = CameraModel(focal_length=focal_length, resolution=resolution)
+            self.detector_3d = Detector3D(camera=self.camera, long_term_mode=DetectorMode.blocking)
+
+    def run(self):
+        print(f'Starting {self.preview_name}')
+        self.cam_preview()
+
+    def stop(self):
+        self.running = False
+
+    def process_eye_frame(self, frame, frame_number, fps):
+        grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        result_2d = self.detector_2d.detect(grayscale)
+        result_2d["timestamp"] = frame_number / fps
+        return self.detector_3d.update_and_detect(result_2d, grayscale)
+
+    def visualize_eye_result(self, frame, result_3d):
+        if 'ellipse' in result_3d:
+            ellipse = result_3d["ellipse"]
+            cv2.ellipse(frame, 
+                        tuple(int(v) for v in ellipse["center"]),
+                        tuple(int(v / 2) for v in ellipse["axes"]),
+                        ellipse["angle"], 0, 360, (0, 255, 0), 2)
+        return frame
+
+    def project_gaze_to_2d(self, gaze_normal):
+        if gaze_normal is None or gaze_normal[2] == 0:
+            return None
+        
+        gaze_normal = np.array(gaze_normal, dtype=float)
+        
+        t = -0.94 / gaze_normal[2]
+
+        X = float(gaze_normal[0] * t)
+        Y = float(gaze_normal[1] * t)
+
+        X_transformed = X + (0.0869 * X**2) + (-0.0061 * X * Y)
+        Y_transformed = Y + (-0.0061 * Y**2) + (-0.0869 * X * Y)
+
+        x_2d = int(320.31 + (-X_transformed * 295.59))
+        y_2d = int(371.91 + (Y_transformed * 297.02))
+        return (x_2d, y_2d)
+
+    def cam_preview(self):
+        cam = cv2.VideoCapture(self.cam_id)
+        if not cam.isOpened():
+            print(f"Error: Could not open camera {self.cam_id}")
+            return
+
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+        
+        fps = 60
+        frame_count = 0
+
+        while self.running:
+            ret, frame = cam.read()
+            if not ret:
+                print(f"Failed to grab frame from {self.preview_name}")
                 break
-        else:
-            break
-    eye_video.release()
-    cv2.destroyAllWindows()
 
+            if self.is_eye_cam:
+                result_3d = self.process_eye_frame(frame, frame_count, fps)
+                
+                if result_3d['confidence'] > 0.6 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
+                    gaze_normal = result_3d['circle_3d']['normal']
+                    gaze_point = self.project_gaze_to_2d(gaze_normal)
+                    if gaze_point:
+                        self.shared_gaze_data.update(gaze_point)
+                        self.debug_info = f"Gaze point: {gaze_point}"
+                    else:
+                        self.debug_info = "Invalid gaze point"
+                else:
+                    self.debug_info = "Low confidence or missing gaze data"
+
+                frame = self.visualize_eye_result(frame, result_3d)
+            else:
+                if self.camera_matrix is not None and self.dist_coeffs is not None:
+                    frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
+
+                gaze_point = self.shared_gaze_data.get()
+                if gaze_point:
+                    gaze_point = tuple(map(int, gaze_point))
+                    if 0 <= gaze_point[0] < frame.shape[1] and 0 <= gaze_point[1] < frame.shape[0]:
+                        cv2.circle(frame, gaze_point, 15, (0, 0, 255), -1)
+                        self.debug_info = f"Drawing gaze at: {gaze_point}"
+                    else:
+                        self.debug_info = f"Gaze point out of bounds: {gaze_point}"
+                else:
+                    self.debug_info = "No gaze point available"
+
+            cv2.putText(frame, self.debug_info, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+            cv2.imshow(self.preview_name, frame)
+            if cv2.waitKey(1) & 0xFF == 27:  # Press 'Esc' to exit
+                break
+
+            frame_count += 1
+
+        cam.release()
+        cv2.destroyWindow(self.preview_name)
+
+def main(args):
+    shared_gaze_data = SharedGazeData()
+
+    camera_matrix = np.array([[343.34511283, 0.0, 327.80111243],
+                              [0.0, 342.79698299, 231.06509007],
+                              [0.0, 0.0, 1.0]])
+    dist_coeffs = np.array([0, 0, 0, -0.001, -0.0])
+
+    eye_cam_thread = CamThread("Eye Camera", args.eye_cam, args.eye_res, 
+                               is_eye_cam=True, focal_length=args.focal_length, 
+                               shared_gaze_data=shared_gaze_data)
+    front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
+                                 shared_gaze_data=shared_gaze_data,
+                                 camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
+
+    eye_cam_thread.start()
+    front_cam_thread.start()
+
+    try:
+        eye_cam_thread.join()
+        front_cam_thread.join()
+    except KeyboardInterrupt:
+        print("Stopping threads...")
+        eye_cam_thread.stop()
+        front_cam_thread.stop()
+        eye_cam_thread.join()
+        front_cam_thread.join()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("eye_video_path")
+    parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
+    parser.add_argument("--eye_cam", type=int, default=1, help="Eye camera index")
+    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
+    parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
+    parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
+    parser.add_argument("--focal_length", type=float, default=184.7, help="Focal length of the eye camera")
     args = parser.parse_args()
-    main(args.eye_video_path)
+    
+    main(args)
