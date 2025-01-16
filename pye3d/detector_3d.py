@@ -90,7 +90,7 @@ class Detector3D:
     def __init__(
         self,
         camera: CameraModel,
-        threshold_swirski=0.9,
+        threshold_swirski=0.7,
         threshold_kalman=0.98,
         threshold_short_term=0.8,
         threshold_long_term=0.95,
@@ -100,7 +100,7 @@ class Detector3D:
         long_term_mode: DetectorMode = DetectorMode.blocking,
         model_update_interval_long_term=1.0,
         model_update_interval_ult_long_term=10.0,
-        model_warmup_duration=20.0,
+        model_warmup_duration=5.0,
         calculate_rms_residual=False,
     ):
         self._camera = camera

@@ -48,7 +48,7 @@ def process_videos():
         result_3d = process_eye_frame(eye_frame, detector_2d, detector_3d, frame_count, fps)
 
         # Only start recording data from frame 100 onwards
-        if frame_count >= 200:
+        if frame_count >= 100:
             # Process front camera frame for ArUco detection
             gray = cv2.cvtColor(front_frame, cv2.COLOR_BGR2GRAY)
             corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
