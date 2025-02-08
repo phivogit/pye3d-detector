@@ -9,7 +9,7 @@ from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
 import torch
 
 class GazePredictionModel(torch.nn.Module):
-    def __init__(self, hidden_size=256):
+    def __init__(self, hidden_size=128):
         super(GazePredictionModel, self).__init__()
         
         self.input_size = 6  # gaze_direction (3) + sphere_center (3)
@@ -67,7 +67,7 @@ class CamThread(threading.Thread):
             
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.model = GazePredictionModel().to(self.device)
-            self.model.load_state_dict(torch.load('best_gaze_model.pth', map_location=self.device))
+            self.model.load_state_dict(torch.load('best_gaze_model2.pth', map_location=self.device))
             self.model.eval()
 
     def predict_gaze_point(self, gaze_normal, sphere_center):

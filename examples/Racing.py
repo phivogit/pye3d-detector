@@ -2,7 +2,7 @@ import cv2
 import threading
 import argparse
 import numpy as np
-import pyautogui
+import keyboard
 import time
 from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
@@ -34,6 +34,8 @@ class CamThread(threading.Thread):
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
         self.lr_model = lr_model
+        self.w_pressed = False
+        self.low_confidence_counter = 0
 
         if is_eye_cam:
             self.detector_2d = Detector2D()
@@ -46,6 +48,8 @@ class CamThread(threading.Thread):
 
     def stop(self):
         self.running = False
+        if self.w_pressed:
+            keyboard.release('w')
 
     def process_eye_frame(self, frame, frame_number, fps):
         grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -53,7 +57,22 @@ class CamThread(threading.Thread):
         result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
         
-        if result_3d['confidence'] > 0.756 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
+        if result_3d['confidence'] < 0.7:
+            self.low_confidence_counter += 1
+            if self.low_confidence_counter >= 0.8 * fps:
+                print("Hello")
+                # Toggle 'w' key state
+                if self.w_pressed:
+                    keyboard.release('w')
+                    self.w_pressed = False
+                else:
+                    keyboard.press('w')
+                    self.w_pressed = True
+                self.low_confidence_counter = 0
+        else:
+            self.low_confidence_counter = 0
+        
+        if result_3d['confidence'] > 0.8 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
             gaze_normal = result_3d['circle_3d']['normal']
             gaze_point = self.predict_gaze_point(gaze_normal)
             if gaze_point is not None:
@@ -87,7 +106,7 @@ class CamThread(threading.Thread):
         cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
         
-        fps = 60
+        fps = 30
         frame_count = 0
 
         while self.running:
@@ -98,8 +117,6 @@ class CamThread(threading.Thread):
 
             if self.is_eye_cam:
                 result_3d = self.process_eye_frame(frame, frame_count, fps)
-                # Commented out to reduce lag
-                # frame = self.visualize_eye_result(frame, result_3d)
             else:
                 if self.camera_matrix is not None and self.dist_coeffs is not None:
                     frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
@@ -133,10 +150,8 @@ class GazeControlThread(threading.Thread):
         self.shared_gaze_data = shared_gaze_data
         self.running = True
         self.last_press_time = 0
-        self.left_pressed = False
-        self.right_pressed = False
-        if disable_failsafe:
-            pyautogui.FAILSAFE = False
+        self.a_pressed = False
+        self.d_pressed = False
 
     def run(self):
         while self.running:
@@ -144,33 +159,29 @@ class GazeControlThread(threading.Thread):
                 gaze_point = self.shared_gaze_data.get()
                 if gaze_point:
                     x = gaze_point[0]
-                    current_time = time.time()
 
                     if x < 270:
-                        if not self.left_pressed:
-                            pyautogui.keyDown('left')
-                            self.left_pressed = True
-                        if self.right_pressed:
-                            pyautogui.keyUp('right')
-                            self.right_pressed = False
-                    elif x > 370:
-                        if not self.right_pressed:
-                            pyautogui.keyDown('right')
-                            self.right_pressed = True
-                        if self.left_pressed:
-                            pyautogui.keyUp('left')
-                            self.left_pressed = False
+                        if not self.a_pressed:
+                            keyboard.press('a')
+                            self.a_pressed = True
+                        if self.d_pressed:
+                            keyboard.release('d')
+                            self.d_pressed = False
+                    elif x > 400:
+                        if not self.d_pressed:
+                            keyboard.press('d')
+                            self.d_pressed = True
+                        if self.a_pressed:
+                            keyboard.release('a')
+                            self.a_pressed = False
                     else:
-                        if self.left_pressed:
-                            pyautogui.keyUp('left')
-                            self.left_pressed = False
-                        if self.right_pressed:
-                            pyautogui.keyUp('right')
-                            self.right_pressed = False
+                        if self.a_pressed:
+                            keyboard.release('a')
+                            self.a_pressed = False
+                        if self.d_pressed:
+                            keyboard.release('d')
+                            self.d_pressed = False
 
-            except pyautogui.FailSafeException:
-                print("PyAutoGUI fail-safe triggered. Pausing gaze control for 5 seconds.")
-                time.sleep(5)  # Pause for 5 seconds when fail-safe is triggered
             except Exception as e:
                 print(f"An error occurred in gaze control: {e}")
 
@@ -179,14 +190,14 @@ class GazeControlThread(threading.Thread):
     def stop(self):
         self.running = False
         # Ensure keys are released when stopping
-        if self.left_pressed:
-            pyautogui.keyUp('left')
-        if self.right_pressed:
-            pyautogui.keyUp('right')
+        if self.a_pressed:
+            keyboard.release('a')
+        if self.d_pressed:
+            keyboard.release('d')
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodel01.joblib')
+        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:

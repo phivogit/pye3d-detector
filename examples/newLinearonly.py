@@ -50,6 +50,13 @@ class CamThread(threading.Thread):
         result_2d = self.detector_2d.detect(grayscale)
         result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
+        if result_3d['confidence'] < 0.7:
+            self.low_confidence_counter += 1
+            if self.low_confidence_counter >= 0.8 * fps:  # 2 seconds * frames per second
+                print("Hello")
+                self.low_confidence_counter = 0
+        else:
+            self.low_confidence_counter = 0       
         
         if result_3d['confidence'] > 0.6 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
             gaze_normal = result_3d['circle_3d']['normal']
@@ -94,7 +101,7 @@ class CamThread(threading.Thread):
             cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # 0 = disable autofocus
            
 
-        fps = 60
+        fps = 30
         frame_count = 0
 
         while self.running:
@@ -134,7 +141,7 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeep.joblib')
+        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:

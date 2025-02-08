@@ -1,70 +1,62 @@
+import json
 import numpy as np
-from tensorflow import keras
+import pandas as pd
+from scipy.stats import zscore
 
-def load_model(model_path):
+def load_data(filepath):
+    with open(filepath, 'r') as file:
+        data = json.load(file)
+    return pd.DataFrame(data)
+
+def detect_abrupt_changes(df, column_name, threshold):
     try:
-        custom_objects = {
-            'mse': keras.losses.MeanSquaredError(),
-            'mae': keras.losses.MeanAbsoluteError(),
-        }
-        model = keras.models.load_model(model_path, custom_objects=custom_objects)
-        print("Model loaded successfully.")
-        return model
-    except Exception as e:
-        print(f"Failed to load model: {e}")
-        return None
+        data = np.array([np.array(x) for x in df[column_name]])
+        gradients = [np.abs(np.gradient(data[:, i])) for i in range(data.shape[1])]
+        max_gradient = np.max(gradients, axis=0)
+        return max_gradient > threshold
+    except:
+        gradient = np.abs(np.gradient(df[column_name].to_numpy()))
+        return gradient > threshold
 
-def parse_input(input_str):
-    # Remove any parentheses and split by comma
-    clean_str = input_str.replace('(', '').replace(')', '').strip()
-    values = clean_str.split(',')
-    if len(values) != 3:
-        raise ValueError(f"Expected 3 values, got {len(values)}")
-    return [float(v.strip()) for v in values]
-
-def get_user_input():
-    while True:
-        try:
-            sphere_center_input = input("Enter sphere center (x,y,z): ")
-            sphere_center = parse_input(sphere_center_input)
-            
-            gaze_direction_input = input("Enter gaze direction (x,y,z): ")
-            gaze_direction = parse_input(gaze_direction_input)
-            
-            return np.array(sphere_center).reshape(1, 3), np.array(gaze_direction).reshape(1, 3)
-        except ValueError as e:
-            print(f"Invalid input: {e}. Please try again.")
-
-def predict_gaze_point(model, sphere_center, gaze_direction):
+def detect_outliers_zscore(df, column_name, threshold=5):
     try:
-        prediction = model.predict([sphere_center, gaze_direction])[0]
-        return tuple(map(int, prediction))
-    except Exception as e:
-        print(f"Error in prediction: {e}")
-        return None
+        data = np.array([np.array(x) for x in df[column_name]])
+        outliers = np.zeros(len(df), dtype=bool)
+        for i in range(data.shape[1]):
+            z = zscore(data[:, i])
+            outliers |= np.abs(z) > threshold
+        return outliers
+    except:
+        z = zscore(df[column_name].to_numpy())
+        return np.abs(z) > threshold
 
-def main():
-    model_path = 'deep_learning_gaze_model_no_norm.h5'
-    model = load_model(model_path)
+def filter_data(df):
+    abrupt_marker = detect_abrupt_changes(df, 'marker_position', threshold=3.3)
+    outlier_sphere = detect_outliers_zscore(df, 'sphere_center', threshold=3)
     
-    if model is None:
-        return
+    df['abrupt_marker'] = abrupt_marker
+    df['outlier_sphere'] = outlier_sphere
     
-    while True:
-        sphere_center, gaze_direction = get_user_input()
-        print(f"Sphere center: {sphere_center.flatten()}")
-        print(f"Gaze direction: {gaze_direction.flatten()}")
-        
-        gaze_point = predict_gaze_point(model, sphere_center, gaze_direction)
-        
-        if gaze_point is not None:
-            print(f"Predicted gaze point: {gaze_point}")
-        else:
-            print("Failed to predict gaze point.")
-        
-        continue_running = input("Do you want to make another prediction? (y/n): ").lower()
-        if continue_running != 'y':
-            break
+    # Loại bỏ tất cả bản ghi có abrupt_marker hoặc outlier_sphere
+    df_filtered = df[~(abrupt_marker | outlier_sphere)].copy()
+    
+    print("\nFiltering Statistics:")
+    print(f"Abrupt marker movements: {abrupt_marker.sum()} records")
+    print(f"Sphere center outliers: {outlier_sphere.sum()} records")
+    print(f"Filtered {len(df) - len(df_filtered)} out of {len(df)} records ({(1 - len(df_filtered)/len(df))*100:.1f}%)")
+    
+    return df_filtered
+
+def save_filtered_data(filtered_df, output_filepath):
+    filtered_df.drop(columns=['abrupt_marker', 'outlier_sphere'], inplace=True, errors='ignore')
+    filtered_df.to_json(output_filepath, orient='records', indent=4)
+    print(f"\nFiltered data saved to {output_filepath}")
+
+def main(filepath='eye_tracking_data3.json', output_filepath='eye_tracking_data3s.json'):
+    df = load_data(filepath)
+    filtered_df = filter_data(df)
+    save_filtered_data(filtered_df, output_filepath)
+    return filtered_df
 
 if __name__ == "__main__":
     main()

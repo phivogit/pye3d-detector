@@ -16,20 +16,17 @@ class GazeDataset(Dataset):
     def __getitem__(self, idx):
         sample = self.samples[idx]
         
-        # Normalize inputs
-        gaze_direction = np.array(sample['gaze_direction'])  # Already normalized (-1 to 1)
-        sphere_center = np.array(sample['sphere_center']) / 20.0  # Normalize large values
+        # Normalize gaze vector
+        gaze_vector = np.array(sample['gaze_direction'])
         marker_position = np.array(sample['marker_position']) / 500.0  # Normalize pixel coordinates
         
-        features = np.concatenate([gaze_direction, sphere_center])
-        
-        return torch.FloatTensor(features), torch.FloatTensor(marker_position)
+        return torch.FloatTensor(gaze_vector), torch.FloatTensor(marker_position)
 
 class GazePredictionModel(nn.Module):
-    def __init__(self, hidden_size=256):
+    def __init__(self, hidden_size=128):
         super(GazePredictionModel, self).__init__()
         
-        self.input_size = 6  # gaze_direction (3) + sphere_center (3)
+        self.input_size = 3  # gaze_vector
         self.output_size = 2  # marker_position (2)
         
         self.network = nn.Sequential(
@@ -41,13 +38,8 @@ class GazePredictionModel(nn.Module):
             nn.Linear(hidden_size, hidden_size//2),
             nn.ReLU(),
             nn.BatchNorm1d(hidden_size//2),
-            nn.Dropout(0.2),
             
-            nn.Linear(hidden_size//2, hidden_size//4),
-            nn.ReLU(),
-            nn.BatchNorm1d(hidden_size//4),
-            
-            nn.Linear(hidden_size//4, self.output_size)
+            nn.Linear(hidden_size//2, self.output_size)
         )
         
     def forward(self, x):
@@ -101,7 +93,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
         # Save best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            torch.save(model.state_dict(), 'best_gaze_model.pth')
+            torch.save(model.state_dict(), 'best_gaze_model_vector.pth')
         
         if (epoch + 1) % 10 == 0:
             print(f'Epoch [{epoch+1}/{num_epochs}]')
@@ -117,24 +109,18 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, scheduler
     plt.ylabel('Loss')
     plt.title('Training and Validation Loss')
     plt.legend()
-    plt.savefig('training_curves.png')
+    plt.savefig('training_curves_vector.png')
     plt.close()
     
     return train_losses, val_losses
 
-def predict_gaze_point(model, gaze_direction, sphere_center):
+def predict_gaze_point(model, gaze_vector):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
     model.eval()
     
     with torch.no_grad():
-        # Normalize inputs
-        sphere_center = np.array(sphere_center) / 20.0
-        
-        input_features = torch.FloatTensor(
-            np.concatenate([gaze_direction, sphere_center])
-        ).unsqueeze(0).to(device)
-        
+        input_features = torch.FloatTensor(gaze_vector).unsqueeze(0).to(device)
         predicted_point = model(input_features)
         predicted_point = predicted_point.cpu().squeeze().numpy() * 500.0
         return predicted_point
@@ -146,8 +132,7 @@ def visualize_predictions(model, data, num_samples=5):
         sample = data[i]
         predicted_point = predict_gaze_point(
             model,
-            sample['gaze_direction'],
-            sample['sphere_center']
+            sample['gaze_direction']
         )
         actual_point = np.array(sample['marker_position'])
         
@@ -163,16 +148,16 @@ def visualize_predictions(model, data, num_samples=5):
     plt.xlabel('X coordinate')
     plt.ylabel('Y coordinate')
     plt.legend()
-    plt.savefig('predictions_visualization.png')
+    plt.savefig('predictions_visualization_vector.png')
     plt.close()
 
 def main():
     # Load data
-    with open('eye_tracking_datadeep.json', 'r') as f:
+    with open('eye_tracking_data2s.json', 'r') as f:
         data = json.load(f)
     
     # Filter samples with confidence 1.0
-    data = [sample for sample in data if sample['confidence'] > 0.955]
+    data = [sample for sample in data if sample['confidence'] > 0.9]
     
     # Split data into train and validation sets
     train_data, val_data = train_test_split(data, test_size=0.2, random_state=42)
@@ -182,7 +167,7 @@ def main():
     val_dataset = GazeDataset(val_data)
     
     # Create data loaders
-    batch_size = 32
+    batch_size = 64
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     
@@ -190,15 +175,10 @@ def main():
     model = GazePredictionModel()
     criterion = nn.MSELoss()
     
-    # Choose optimizer (Adam or SGD)
-    optimizer_type = "adam"  # Change this to "adam" to use Adam optimizer
-    if optimizer_type == "adam":
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.005)
-    else:
-        optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.003)
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5, verbose=True
+        optimizer, mode='min', factor=0.5, patience=8, verbose=True
     )
     
     # Train the model
@@ -207,7 +187,7 @@ def main():
     )
     
     # Load the best model for prediction
-    model.load_state_dict(torch.load('best_gaze_model.pth'))
+    model.load_state_dict(torch.load('best_gaze_model_vector.pth'))
     
     # Visualize some predictions
     visualize_predictions(model, val_data)
@@ -220,8 +200,7 @@ def main():
     for sample in val_data:
         predicted = predict_gaze_point(
             model,
-            sample['gaze_direction'],
-            sample['sphere_center']
+            sample['gaze_direction']
         )
         actual = np.array(sample['marker_position'])
         error = np.linalg.norm(predicted - actual)

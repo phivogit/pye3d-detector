@@ -3,32 +3,28 @@ import threading
 import argparse
 import numpy as np
 import torch
+import torch.nn as nn
 from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
 
-class GazePredictionModel(torch.nn.Module):
-    def __init__(self, hidden_size=256):
+class GazePredictionModel(nn.Module):
+    def __init__(self, hidden_size=128):
         super(GazePredictionModel, self).__init__()
         
-        self.input_size = 6  # gaze_direction (3) + sphere_center (3)
+        self.input_size = 3  # gaze_vector
         self.output_size = 2  # marker_position (2)
         
-        self.network = torch.nn.Sequential(
-            torch.nn.Linear(self.input_size, hidden_size),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm1d(hidden_size),
-            torch.nn.Dropout(0.2),
+        self.network = nn.Sequential(
+            nn.Linear(self.input_size, hidden_size),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size),
+            nn.Dropout(0.2),
             
-            torch.nn.Linear(hidden_size, hidden_size//2),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm1d(hidden_size//2),
-            torch.nn.Dropout(0.2),
+            nn.Linear(hidden_size, hidden_size//2),
+            nn.ReLU(),
+            nn.BatchNorm1d(hidden_size//2),
             
-            torch.nn.Linear(hidden_size//2, hidden_size//4),
-            torch.nn.ReLU(),
-            torch.nn.BatchNorm1d(hidden_size//4),
-            
-            torch.nn.Linear(hidden_size//4, self.output_size)
+            nn.Linear(hidden_size//2, self.output_size)
         )
         
     def forward(self, x):
@@ -70,19 +66,15 @@ class CamThread(threading.Thread):
             # Load the pretrained model
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.model = GazePredictionModel().to(self.device)
-            self.model.load_state_dict(torch.load('best_gaze_model.pth', 
+            self.model.load_state_dict(torch.load('best_gaze_model_vector.pth', 
                                                 map_location=self.device))
             self.model.eval()
 
-    def predict_gaze_point(self, gaze_normal, sphere_center):
+    def predict_gaze_point(self, gaze_normal):
         try:
             with torch.no_grad():
-                # Normalize inputs
-                sphere_center = np.array(sphere_center) / 20.0
-                
-                # Concatenate and convert to tensor
-                features = np.concatenate([gaze_normal, sphere_center])
-                input_tensor = torch.FloatTensor(features).unsqueeze(0).to(self.device)
+                # Convert to tensor
+                input_tensor = torch.FloatTensor(gaze_normal).unsqueeze(0).to(self.device)
                 
                 # Get prediction
                 prediction = self.model(input_tensor)
@@ -99,12 +91,11 @@ class CamThread(threading.Thread):
         result_2d = self.detector_2d.detect(grayscale)
         result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
-        
+           
         if result_3d['confidence'] > 0.6 and 'circle_3d' in result_3d:
             gaze_normal = result_3d['circle_3d']['normal']
-            sphere_center = result_3d['sphere']['center']
             
-            gaze_point = self.predict_gaze_point(gaze_normal, sphere_center)
+            gaze_point = self.predict_gaze_point(gaze_normal)
             if gaze_point is not None:
                 self.shared_gaze_data.update(gaze_point)
                 self.debug_info = f"Predicted gaze point: {gaze_point}"
