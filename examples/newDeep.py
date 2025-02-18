@@ -79,7 +79,7 @@ class CamThread(threading.Thread):
                 # Get prediction
                 prediction = self.model(input_tensor)
                 # Denormalize the output (multiply by 500 as per training)
-                prediction = prediction.cpu().squeeze().numpy() * 500.0
+                prediction = prediction.cpu().squeeze().numpy() * 640.0
                 
                 return tuple(map(int, prediction))
         except Exception as e:
@@ -134,7 +134,7 @@ class CamThread(threading.Thread):
         if not self.is_eye_cam:
             cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
 
-        fps = 60
+        fps = 30
         frame_count = 0
 
         while self.running:

@@ -94,13 +94,13 @@ class Detector3D:
         threshold_kalman=0.98,
         threshold_short_term=0.8,
         threshold_long_term=0.95,
-        long_term_buffer_size=30,
+        long_term_buffer_size=20,
         long_term_forget_time=5,
-        long_term_forget_observations=300,
+        long_term_forget_observations=200,
         long_term_mode: DetectorMode = DetectorMode.blocking,
         model_update_interval_long_term=1.0,
         model_update_interval_ult_long_term=10.0,
-        model_warmup_duration=5.0,
+        model_warmup_duration=15.0,
         calculate_rms_residual=False,
     ):
         self._camera = camera

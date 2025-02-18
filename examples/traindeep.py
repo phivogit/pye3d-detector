@@ -18,7 +18,7 @@ class GazeDataset(Dataset):
         
         # Normalize gaze vector
         gaze_vector = np.array(sample['gaze_direction'])
-        marker_position = np.array(sample['marker_position']) / 500.0  # Normalize pixel coordinates
+        marker_position = np.array(sample['marker_position']) / 640.0  # Normalize pixel coordinates
         
         return torch.FloatTensor(gaze_vector), torch.FloatTensor(marker_position)
 
@@ -122,7 +122,7 @@ def predict_gaze_point(model, gaze_vector):
     with torch.no_grad():
         input_features = torch.FloatTensor(gaze_vector).unsqueeze(0).to(device)
         predicted_point = model(input_features)
-        predicted_point = predicted_point.cpu().squeeze().numpy() * 500.0
+        predicted_point = predicted_point.cpu().squeeze().numpy() * 640.0
         return predicted_point
 
 def visualize_predictions(model, data, num_samples=5):

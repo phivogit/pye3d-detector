@@ -4,7 +4,84 @@ import argparse
 import numpy as np
 from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
-import joblib
+
+class FrontCameraIntrinsics:
+    """Front camera intrinsics model with specific calibration parameters"""
+    def __init__(self, resolution=(1280, 720)):
+        self.resolution = resolution
+        
+        # Use the provided camera matrix
+        self.camera_matrix = np.array([
+            [576.09, 0, 655.15],
+            [0, 576.09, 362.99],
+            [0, 0, 1]
+        ])
+        
+        # Use the provided distortion coefficients
+        self.dist_coeffs = np.array([0.2501, 0.2771, -0.3450, 0.5011, 0.0])
+        
+        # Extract focal length from camera matrix
+        self.focal_length = self.camera_matrix[0, 0]
+    
+    def projectPoints(self, object_points, rvec, tvec):
+        """Project 3D points to 2D using OpenCV's projectPoints with calibrated parameters"""
+        return cv2.projectPoints(object_points, rvec, tvec, self.camera_matrix, self.dist_coeffs)[0]
+
+class GazeMapper:
+    def __init__(self, front_camera_resolution=(1280, 720)):
+        # Hardcoded eye_camera_to_world_matrix from calibration
+        self.eye_camera_to_world_matrix = np.array([
+            [-0.3484695425289404, -0.724353620096769, -0.5948788204183916, -130.66384023297988],
+            [-0.7581322961235649, 0.5910203060031228, -0.27555474858254025, 203.71910832784144],
+            [0.5511845421490723, 0.3549744088588379, -0.7551084488676022, 435.419631967043],
+            [0.0, 0.0, 0.0, 1.0]
+        ])
+        self.gaze_distance = 500
+        
+        # Extract rotation and translation components
+        self.rotation_matrix = self.eye_camera_to_world_matrix[:3, :3]
+        self.rotation_vector = cv2.Rodrigues(self.rotation_matrix)[0]
+        self.translation_vector = self.eye_camera_to_world_matrix[:3, 3]
+        
+        # Create front camera intrinsics
+        self.front_camera_intrinsics = FrontCameraIntrinsics(resolution=front_camera_resolution)
+    
+    def map_gaze(self, result_3d):
+        """Maps 3D pupil detection result to gaze points using calibration data"""
+        if 'circle_3d' not in result_3d or 'normal' not in result_3d['circle_3d'] or 'sphere' not in result_3d or 'center' not in result_3d['sphere']:
+            return None
+        
+        # Extract pupil normal and sphere center
+        pupil_normal = np.array(result_3d['circle_3d']['normal'])
+        sphere_center = np.array(result_3d['sphere']['center'])
+        
+        # Calculate gaze point in eye camera coordinates
+        gaze_point = pupil_normal * self.gaze_distance + sphere_center
+        
+        # Transform to world coordinates
+        eye_center = self._to_world(sphere_center)
+        gaze_3d = self._to_world(gaze_point)
+        normal_3d = np.dot(self.rotation_matrix, pupil_normal)
+        
+        # Check if gaze is in front of camera and flip if needed
+        if gaze_3d[-1] < 0:
+            gaze_3d *= -1.0
+        
+        # Project 3D gaze point to 2D using front camera intrinsics
+        image_point = self.front_camera_intrinsics.projectPoints(
+            gaze_3d.reshape(1, 1, 3), 
+            np.zeros(3),  # Assume front camera is aligned with world
+            np.zeros(3)   # Assume front camera is at world origin
+        )
+        image_point = image_point.reshape(-1, 2)
+        
+        return (int(image_point[0][0]), int(image_point[0][1]))
+    
+    def _to_world(self, point):
+        """Transform a point from eye camera to world coordinates"""
+        p = np.ones(4)
+        p[:3] = point[:3]
+        return np.dot(self.eye_camera_to_world_matrix, p)[:3]
 
 class SharedGazeData:
     def __init__(self):
@@ -20,7 +97,7 @@ class SharedGazeData:
             return self.gaze_point
 
 class CamThread(threading.Thread):
-    def __init__(self, preview_name, cam_id, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
+    def __init__(self, preview_name, cam_id, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None):
         threading.Thread.__init__(self)
         self.preview_name = preview_name
         self.cam_id = cam_id
@@ -29,14 +106,12 @@ class CamThread(threading.Thread):
         self.shared_gaze_data = shared_gaze_data
         self.running = True
         self.debug_info = ""
-        self.camera_matrix = camera_matrix
-        self.dist_coeffs = dist_coeffs
-        self.lr_model = lr_model
 
         if is_eye_cam:
             self.detector_2d = Detector2D()
             self.camera = CameraModel(focal_length=focal_length, resolution=resolution)
             self.detector_3d = Detector3D(camera=self.camera, long_term_mode=DetectorMode.blocking)
+            self.gaze_mapper = GazeMapper(front_camera_resolution=(1280, 720))
 
     def run(self):
         print(f'Starting {self.preview_name}')
@@ -50,27 +125,18 @@ class CamThread(threading.Thread):
         result_2d = self.detector_2d.detect(grayscale)
         result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
- 
         
-        if result_3d['confidence'] > 0.6 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
-            gaze_normal = result_3d['circle_3d']['normal']
-            gaze_point = self.predict_gaze_point(gaze_normal)
+        if result_3d['confidence'] > 0.6:
+            gaze_point = self.gaze_mapper.map_gaze(result_3d)
             if gaze_point is not None:
                 self.shared_gaze_data.update(gaze_point)
-                self.debug_info = f"Predicted gaze point: {gaze_point}"
+                self.debug_info = f"Mapped gaze point: {gaze_point}"
             else:
-                self.debug_info = "Invalid gaze prediction"
+                self.debug_info = "Invalid gaze mapping"
         else:
-            self.debug_info = "Low confidence or missing gaze data"
+            self.debug_info = "Low confidence"
         
         return result_3d
-
-    def predict_gaze_point(self, gaze_normal):
-        if self.lr_model is None:
-            return None
-        
-        prediction = self.lr_model.predict([gaze_normal])[0]
-        return tuple(map(int, prediction))
 
     def visualize_eye_result(self, frame, result_3d):
         if 'ellipse' in result_3d:
@@ -92,8 +158,7 @@ class CamThread(threading.Thread):
         
         # Disable autofocus for the front camera
         if not self.is_eye_cam:
-            cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)  # 0 = disable autofocus
-           
+            cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
 
         fps = 30
         frame_count = 0
@@ -108,12 +173,8 @@ class CamThread(threading.Thread):
                 result_3d = self.process_eye_frame(frame, frame_count, fps)
                 frame = self.visualize_eye_result(frame, result_3d)
             else:
-                if self.camera_matrix is not None and self.dist_coeffs is not None:
-                    frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
-
                 gaze_point = self.shared_gaze_data.get()
                 if gaze_point:
-                    gaze_point = tuple(map(int, gaze_point))
                     if 0 <= gaze_point[0] < frame.shape[1] and 0 <= gaze_point[1] < frame.shape[0]:
                         cv2.circle(frame, gaze_point, 15, (0, 0, 255), -1)
                         self.debug_info = f"Drawing gaze at: {gaze_point}"
@@ -133,34 +194,14 @@ class CamThread(threading.Thread):
         cam.release()
         cv2.destroyWindow(self.preview_name)
 
-def load_linear_regression_model():
-    try:
-        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
-        print("Linear Regression model loaded successfully.")
-        return lr_model
-    except Exception as e:
-        print(f"Failed to load Linear Regression model: {e}")
-        print("Falling back to default gaze projection method.")
-        return None
-
 def main(args):
     shared_gaze_data = SharedGazeData()
 
-    camera_matrix = np.array([[343.34511283, 0.0, 327.80111243],
-                              [0.0, 342.79698299, 231.06509007],
-                              [0.0, 0.0, 1.0]])
-    dist_coeffs = np.array([0, 0, 0, -0.001, -0.0])
-
-    # Load the Linear Regression model
-    lr_model = load_linear_regression_model()
-
     eye_cam_thread = CamThread("Eye Camera", args.eye_cam, args.eye_res, 
-                               is_eye_cam=True, focal_length=args.focal_length, 
-                               shared_gaze_data=shared_gaze_data,
-                               lr_model=lr_model)
+                              is_eye_cam=True, focal_length=args.focal_length, 
+                              shared_gaze_data=shared_gaze_data)
     front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
-                                 shared_gaze_data=shared_gaze_data,
-                                 camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
+                                shared_gaze_data=shared_gaze_data)
 
     eye_cam_thread.start()
     front_cam_thread.start()
@@ -180,7 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("--eye_cam", type=int, default=1, help="Eye camera index")
     parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
-    parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
+    parser.add_argument("--front_res", nargs=2, type=int, default=[1280, 720], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
     args = parser.parse_args()
     
