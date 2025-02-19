@@ -137,8 +137,8 @@ def main():
     shared_gaze_data = SharedGazeData()
 
     # Hardcoded HTTP stream URLs
-    eye_stream_url = "http://192.168.1.85:8081/?action=stream"
-    front_stream_url = "http://192.168.1.85:8080/?action=stream"
+    eye_stream_url = "http://192.168.1.120:8081/?action=stream"
+    front_stream_url = "http://192.168.1.120:8080/?action=stream"
 
     # Resolutions
     eye_resolution = (320, 240)

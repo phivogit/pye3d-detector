@@ -2,7 +2,7 @@ import cv2
 import threading
 import argparse
 import numpy as np
-import pyautogui
+import keyboard
 import time
 from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
@@ -22,10 +22,10 @@ class SharedGazeData:
             return self.gaze_point
 
 class CamThread(threading.Thread):
-    def __init__(self, preview_name, stream_url, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
+    def __init__(self, preview_name, cam_id, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
         threading.Thread.__init__(self)
         self.preview_name = preview_name
-        self.stream_url = stream_url
+        self.cam_id = cam_id
         self.resolution = resolution
         self.is_eye_cam = is_eye_cam
         self.shared_gaze_data = shared_gaze_data
@@ -34,6 +34,7 @@ class CamThread(threading.Thread):
         self.camera_matrix = camera_matrix
         self.dist_coeffs = dist_coeffs
         self.lr_model = lr_model
+        self.w_pressed = False
 
         if is_eye_cam:
             self.detector_2d = Detector2D()
@@ -46,6 +47,8 @@ class CamThread(threading.Thread):
 
     def stop(self):
         self.running = False
+        if self.w_pressed:
+            keyboard.release('w')
 
     def process_eye_frame(self, frame, frame_number, fps):
         grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -79,12 +82,15 @@ class CamThread(threading.Thread):
         return frame
 
     def cam_preview(self):
-        cam = cv2.VideoCapture(self.stream_url)
+        cam = cv2.VideoCapture(self.cam_id)
         if not cam.isOpened():
-            print(f"Error: Could not open stream {self.stream_url}")
+            print(f"Error: Could not open camera {self.cam_id}")
             return
 
-        fps = cam.get(cv2.CAP_PROP_FPS) or 60  # Fallback to 60 FPS if server doesn't provide it
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
+        
+        fps = 30
         frame_count = 0
 
         while self.running:
@@ -95,8 +101,6 @@ class CamThread(threading.Thread):
 
             if self.is_eye_cam:
                 result_3d = self.process_eye_frame(frame, frame_count, fps)
-                # Commented out to reduce lag
-                # frame = self.visualize_eye_result(frame, result_3d)
             else:
                 if self.camera_matrix is not None and self.dist_coeffs is not None:
                     frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
@@ -122,8 +126,7 @@ class CamThread(threading.Thread):
             frame_count += 1
 
         cam.release()
-        if not self.is_eye_cam:
-            cv2.destroyWindow(self.preview_name)
+        cv2.destroyWindow(self.preview_name)
 
 class GazeControlThread(threading.Thread):
     def __init__(self, shared_gaze_data, disable_failsafe=False):
@@ -133,8 +136,6 @@ class GazeControlThread(threading.Thread):
         self.last_press_time = 0
         self.left_pressed = False
         self.right_pressed = False
-        if disable_failsafe:
-            pyautogui.FAILSAFE = False
 
     def run(self):
         while self.running:
@@ -142,33 +143,29 @@ class GazeControlThread(threading.Thread):
                 gaze_point = self.shared_gaze_data.get()
                 if gaze_point:
                     x = gaze_point[0]
-                    current_time = time.time()
 
                     if x < 270:
                         if not self.left_pressed:
-                            pyautogui.keyDown('left')
+                            keyboard.press('left')
                             self.left_pressed = True
                         if self.right_pressed:
-                            pyautogui.keyUp('right')
+                            keyboard.release('right')
                             self.right_pressed = False
                     elif x > 370:
                         if not self.right_pressed:
-                            pyautogui.keyDown('right')
+                            keyboard.press('right')
                             self.right_pressed = True
                         if self.left_pressed:
-                            pyautogui.keyUp('left')
+                            keyboard.release('left')
                             self.left_pressed = False
                     else:
                         if self.left_pressed:
-                            pyautogui.keyUp('left')
+                            keyboard.release('left')
                             self.left_pressed = False
                         if self.right_pressed:
-                            pyautogui.keyUp('right')
+                            keyboard.release('right')
                             self.right_pressed = False
 
-            except pyautogui.FailSafeException:
-                print("PyAutoGUI fail-safe triggered. Pausing gaze control for 5 seconds.")
-                time.sleep(5)  # Pause for 5 seconds when fail-safe is triggered
             except Exception as e:
                 print(f"An error occurred in gaze control: {e}")
 
@@ -178,13 +175,13 @@ class GazeControlThread(threading.Thread):
         self.running = False
         # Ensure keys are released when stopping
         if self.left_pressed:
-            pyautogui.keyUp('left')
+            keyboard.release('left')
         if self.right_pressed:
-            pyautogui.keyUp('right')
+            keyboard.release('right')
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodel01.joblib')
+        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -203,11 +200,11 @@ def main(args):
     # Load the Linear Regression model
     lr_model = load_linear_regression_model()
 
-    eye_cam_thread = CamThread("Eye Camera", args.eye_stream, args.eye_res, 
+    eye_cam_thread = CamThread("Eye Camera", args.eye_cam, args.eye_res, 
                                is_eye_cam=True, focal_length=args.focal_length, 
                                shared_gaze_data=shared_gaze_data,
                                lr_model=lr_model)
-    front_cam_thread = CamThread("Front Camera", args.front_stream, args.front_res, 
+    front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
                                  shared_gaze_data=shared_gaze_data,
                                  camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
     gaze_control_thread = GazeControlThread(shared_gaze_data, disable_failsafe=args.disable_failsafe)
@@ -231,8 +228,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.1.85:8081/?action=stream", help="Eye camera stream URL")
-    parser.add_argument("--front_stream", type=str, default="http://192.168.1.85:8080/?action=stream", help="Front camera stream URL")
+    parser.add_argument("--eye_cam", type=int, default=1,help="Eye camera index")
+    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
