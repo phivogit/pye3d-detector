@@ -22,10 +22,10 @@ class SharedGazeData:
             return self.gaze_point
 
 class CamThread(threading.Thread):
-    def __init__(self, preview_name, cam_id, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
+    def __init__(self, preview_name, stream_url, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
         threading.Thread.__init__(self)
         self.preview_name = preview_name
-        self.cam_id = cam_id
+        self.stream_url = stream_url
         self.resolution = resolution
         self.is_eye_cam = is_eye_cam
         self.shared_gaze_data = shared_gaze_data
@@ -56,6 +56,14 @@ class CamThread(threading.Thread):
         result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
         
+        if result_3d['confidence'] < 0.6:
+                if self.w_pressed:
+                    keyboard.release('w')
+                    self.w_pressed = False
+                else:
+                    keyboard.press('w')
+                    self.w_pressed = True
+        
         if result_3d['confidence'] > 0.756 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
             gaze_normal = result_3d['circle_3d']['normal']
             gaze_point = self.predict_gaze_point(gaze_normal)
@@ -79,18 +87,19 @@ class CamThread(threading.Thread):
     def visualize_eye_result(self, frame, result_3d):
         if 'ellipse' in result_3d:
             ellipse = result_3d["ellipse"]
+            cv2.ellipse(frame, 
+                        tuple(int(v) for v in ellipse["center"]),
+                        tuple(int(v / 2) for v in ellipse["axes"]),
+                        ellipse["angle"], 0, 360, (0, 255, 0), 2)
         return frame
 
     def cam_preview(self):
-        cam = cv2.VideoCapture(self.cam_id)
+        cam = cv2.VideoCapture(self.stream_url)
         if not cam.isOpened():
-            print(f"Error: Could not open camera {self.cam_id}")
+            print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.resolution[0])
-        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.resolution[1])
-        
-        fps = 30
+        fps = cam.get(cv2.CAP_PROP_FPS) or 30  # Fallback to 30 FPS if server doesn't provide it
         frame_count = 0
 
         while self.running:
@@ -99,8 +108,12 @@ class CamThread(threading.Thread):
                 print(f"Failed to grab frame from {self.preview_name}")
                 break
 
+            # Resize frame to match desired resolution
+            frame = cv2.resize(frame, (self.resolution[0], self.resolution[1]))
+
             if self.is_eye_cam:
                 result_3d = self.process_eye_frame(frame, frame_count, fps)
+                frame = self.visualize_eye_result(frame, result_3d)
             else:
                 if self.camera_matrix is not None and self.dist_coeffs is not None:
                     frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
@@ -146,24 +159,24 @@ class GazeControlThread(threading.Thread):
 
                     if x < 270:
                         if not self.left_pressed:
-                            keyboard.press('left')
+                            keyboard.press('a')
                             self.left_pressed = True
                         if self.right_pressed:
-                            keyboard.release('right')
+                            keyboard.release('d')
                             self.right_pressed = False
                     elif x > 370:
                         if not self.right_pressed:
-                            keyboard.press('right')
+                            keyboard.press('d')
                             self.right_pressed = True
                         if self.left_pressed:
-                            keyboard.release('left')
+                            keyboard.release('a')
                             self.left_pressed = False
                     else:
                         if self.left_pressed:
-                            keyboard.release('left')
+                            keyboard.release('a')
                             self.left_pressed = False
                         if self.right_pressed:
-                            keyboard.release('right')
+                            keyboard.release('d')
                             self.right_pressed = False
 
             except Exception as e:
@@ -175,9 +188,9 @@ class GazeControlThread(threading.Thread):
         self.running = False
         # Ensure keys are released when stopping
         if self.left_pressed:
-            keyboard.release('left')
+            keyboard.release('a')
         if self.right_pressed:
-            keyboard.release('right')
+            keyboard.release('d')
 
 def load_linear_regression_model():
     try:
@@ -200,11 +213,11 @@ def main(args):
     # Load the Linear Regression model
     lr_model = load_linear_regression_model()
 
-    eye_cam_thread = CamThread("Eye Camera", args.eye_cam, args.eye_res, 
+    eye_cam_thread = CamThread("Eye Camera", args.eye_stream, args.eye_res, 
                                is_eye_cam=True, focal_length=args.focal_length, 
                                shared_gaze_data=shared_gaze_data,
                                lr_model=lr_model)
-    front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
+    front_cam_thread = CamThread("Front Camera", args.front_stream, args.front_res, 
                                  shared_gaze_data=shared_gaze_data,
                                  camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
     gaze_control_thread = GazeControlThread(shared_gaze_data, disable_failsafe=args.disable_failsafe)
@@ -228,8 +241,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_cam", type=int, default=1,help="Eye camera index")
-    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.1.120:8081/?action=stream",
+                        help="Eye camera stream URL")
+    parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
+                        help="Front camera stream URL")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
