@@ -50,19 +50,19 @@ class CamThread(threading.Thread):
         if self.w_pressed:
             keyboard.release('w')
 
-    def process_eye_frame(self, frame, frame_number, fps):
+    def process_eye_frame(self, frame, frame_number):
         grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         result_2d = self.detector_2d.detect(grayscale)
-        result_2d["timestamp"] = frame_number / fps
+        result_2d["timestamp"] = frame_number
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
         
         if result_3d['confidence'] < 0.6:
-                if self.w_pressed:
-                    keyboard.release('w')
-                    self.w_pressed = False
-                else:
-                    keyboard.press('w')
-                    self.w_pressed = True
+            keyboard.press('w')
+            self.w_pressed = True
+        else:
+            if self.w_pressed:
+                keyboard.release('w')
+                self.w_pressed = False
         
         if result_3d['confidence'] > 0.756 and 'circle_3d' in result_3d and 'normal' in result_3d['circle_3d']:
             gaze_normal = result_3d['circle_3d']['normal']
@@ -84,22 +84,12 @@ class CamThread(threading.Thread):
         prediction = self.lr_model.predict([gaze_normal])[0]
         return tuple(map(int, prediction))
 
-    def visualize_eye_result(self, frame, result_3d):
-        if 'ellipse' in result_3d:
-            ellipse = result_3d["ellipse"]
-            cv2.ellipse(frame, 
-                        tuple(int(v) for v in ellipse["center"]),
-                        tuple(int(v / 2) for v in ellipse["axes"]),
-                        ellipse["angle"], 0, 360, (0, 255, 0), 2)
-        return frame
-
     def cam_preview(self):
         cam = cv2.VideoCapture(self.stream_url)
         if not cam.isOpened():
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        fps = cam.get(cv2.CAP_PROP_FPS) or 30  # Fallback to 30 FPS if server doesn't provide it
         frame_count = 0
 
         while self.running:
@@ -112,8 +102,7 @@ class CamThread(threading.Thread):
             frame = cv2.resize(frame, (self.resolution[0], self.resolution[1]))
 
             if self.is_eye_cam:
-                result_3d = self.process_eye_frame(frame, frame_count, fps)
-                frame = self.visualize_eye_result(frame, result_3d)
+                result_3d = self.process_eye_frame(frame, frame_count)
             else:
                 if self.camera_matrix is not None and self.dist_coeffs is not None:
                     frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
