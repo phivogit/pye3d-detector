@@ -149,7 +149,7 @@ def main(args):
     camera_matrix = np.array([[343.34511283, 0.0, 327.80111243],
                               [0.0, 342.79698299, 231.06509007],
                               [0.0, 0.0, 1.0]])
-    dist_coeffs = np.array([0, 0, 0, -0.001, -0.0])
+    dist_coeffs = np.array([0, 0, 0, -0.001])
 
     # Load the Linear Regression model
     lr_model = load_linear_regression_model()

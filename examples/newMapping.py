@@ -11,31 +11,31 @@ class FrontCameraIntrinsics:
         self.resolution = resolution
         
         # Use the provided camera matrix
-        self.camera_matrix = np.array([
-            [576.09, 0, 655.15],
-            [0, 576.09, 362.99],
-            [0, 0, 1]
-        ])
-        
+        self.camera_matrix = np.array([[576.0939971760606, 0.0, 655.1495459573105],
+                          [0.0, 559.9657414320292, 362.99899317192825],
+                          [0.0, 0.0, 1.0]])
+
         # Use the provided distortion coefficients
-        self.dist_coeffs = np.array([0.2501, 0.2771, -0.3450, 0.5011, 0.0])
+        self.dist_coeffs = np.array([0, 0, 0, -0.001])
         
         # Extract focal length from camera matrix
         self.focal_length = self.camera_matrix[0, 0]
     
     def projectPoints(self, object_points, rvec, tvec):
-        """Project 3D points to 2D using OpenCV's projectPoints with calibrated parameters"""
+        rvec = np.zeros(3).reshape(1, 1, 3)
+        tvec = np.zeros(3).reshape(1, 1, 3)
+        
         return cv2.projectPoints(object_points, rvec, tvec, self.camera_matrix, self.dist_coeffs)[0]
+
 
 class GazeMapper:
     def __init__(self, front_camera_resolution=(1280, 720)):
         # Hardcoded eye_camera_to_world_matrix from calibration
         self.eye_camera_to_world_matrix = np.array([
-            [-0.3484695425289404, -0.724353620096769, -0.5948788204183916, -130.66384023297988],
-            [-0.7581322961235649, 0.5910203060031228, -0.27555474858254025, 203.71910832784144],
-            [0.5511845421490723, 0.3549744088588379, -0.7551084488676022, 435.419631967043],
-            [0.0, 0.0, 0.0, 1.0]
-        ])
+            [-0.42760081742403516, -0.7848729415882221, -0.4484774314287715, -29.731415636833695],
+            [-0.5043020103124323,  0.6188632685578088, -0.6022356160380957, 51.91357779601506],
+            [0.7502246485774354, -0.03134837145047159, -0.6604394417918019, 99.3595813808341],
+            [0.0, 0.0, 0.0, 1.0]])
         self.gaze_distance = 500
         
         # Extract rotation and translation components
@@ -58,20 +58,12 @@ class GazeMapper:
         # Calculate gaze point in eye camera coordinates
         gaze_point = pupil_normal * self.gaze_distance + sphere_center
         
-        # Transform to world coordinates
-        eye_center = self._to_world(sphere_center)
-        gaze_3d = self._to_world(gaze_point)
-        normal_3d = np.dot(self.rotation_matrix, pupil_normal)
-        
-        # Check if gaze is in front of camera and flip if needed
-        if gaze_3d[-1] < 0:
-            gaze_3d *= -1.0
-        
+
         # Project 3D gaze point to 2D using front camera intrinsics
         image_point = self.front_camera_intrinsics.projectPoints(
-            gaze_3d.reshape(1, 1, 3), 
-            np.zeros(3),  # Assume front camera is aligned with world
-            np.zeros(3)   # Assume front camera is at world origin
+            gaze_point[np.newaxis].reshape(-1, 1, 3),  # Keep the original gaze_point in eye coordinates
+            self.rotation_vector,                       # Use the eye rotation vector
+            self.translation_vector                     # Use the eye translation vector
         )
         image_point = image_point.reshape(-1, 2)
         
@@ -218,8 +210,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_cam", type=int, default=1, help="Eye camera index")
-    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
+    parser.add_argument("--eye_cam", type=int, default=2, help="Eye camera index")
+    parser.add_argument("--front_cam", type=int, default=1, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[1280, 720], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")

@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 import joblib
 
 # Load the data from JSON file
-with open('eye_tracking_data2s.json', 'r') as f:
+with open('eye_tracking_dataS.json', 'r') as f:
     data = json.load(f)
 
 # Extract features (gaze_direction) and targets (marker_position)

@@ -72,7 +72,7 @@ def process_videos():
     front_video.release()
 
     # Save the output data as JSON
-    with open('eye_tracking_data3.json', 'w') as f:
+    with open('eye_tracking_dataS.json', 'w') as f:
         json.dump(output_data, f, indent=2)
 
     print(f"Data saved to eye_tracking_datadeep2.json")
