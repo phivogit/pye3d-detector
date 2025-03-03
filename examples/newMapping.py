@@ -21,12 +21,6 @@ class FrontCameraIntrinsics:
         # Extract focal length from camera matrix
         self.focal_length = self.camera_matrix[0, 0]
     
-    def projectPoints(self, object_points, rvec, tvec):
-        rvec = np.zeros(3).reshape(1, 1, 3)
-        tvec = np.zeros(3).reshape(1, 1, 3)
-        
-        return cv2.projectPoints(object_points, rvec, tvec, self.camera_matrix, self.dist_coeffs)[0]
-
 
 class GazeMapper:
     def __init__(self, front_camera_resolution=(1280, 720)):
@@ -37,7 +31,7 @@ class GazeMapper:
             [0.7502246485774354, -0.03134837145047159, -0.6604394417918019, 99.3595813808341],
             [0.0, 0.0, 0.0, 1.0]])
         self.gaze_distance = 500
-        
+
         # Extract rotation and translation components
         self.rotation_matrix = self.eye_camera_to_world_matrix[:3, :3]
         self.rotation_vector = cv2.Rodrigues(self.rotation_matrix)[0]
@@ -45,7 +39,21 @@ class GazeMapper:
         
         # Create front camera intrinsics
         self.front_camera_intrinsics = FrontCameraIntrinsics(resolution=front_camera_resolution)
-    
+
+    def projectPoints(self, object_points, rvec=None, tvec=None):
+        if rvec is None:
+            rvec = self.rotation_vector
+        if tvec is None:
+            tvec = self.translation_vector
+        
+        camera_matrix = self.front_camera_intrinsics.camera_matrix
+        dist_coeffs = self.front_camera_intrinsics.dist_coeffs
+        
+        points = cv2.fisheye.projectPoints(
+            object_points, rvec, tvec, camera_matrix, dist_coeffs, alpha=0
+        )[0]
+        
+        return points
     def map_gaze(self, result_3d):
         """Maps 3D pupil detection result to gaze points using calibration data"""
         if 'circle_3d' not in result_3d or 'normal' not in result_3d['circle_3d'] or 'sphere' not in result_3d or 'center' not in result_3d['sphere']:
@@ -58,13 +66,14 @@ class GazeMapper:
         # Calculate gaze point in eye camera coordinates
         gaze_point = pupil_normal * self.gaze_distance + sphere_center
         
-
-        # Project 3D gaze point to 2D using front camera intrinsics
-        image_point = self.front_camera_intrinsics.projectPoints(
-            gaze_point[np.newaxis].reshape(-1, 1, 3),  # Keep the original gaze_point in eye coordinates
-            self.rotation_vector,                       # Use the eye rotation vector
-            self.translation_vector                     # Use the eye translation vector
+        # Project 3D gaze point to 2D using the projectPoints method from GazeMapper
+        object_points = gaze_point[np.newaxis].reshape(-1, 1, 3)
+        image_point = self.projectPoints(
+            object_points,
+            self.rotation_vector,
+            self.translation_vector
         )
+        
         image_point = image_point.reshape(-1, 2)
         
         return (int(image_point[0][0]), int(image_point[0][1]))
@@ -210,8 +219,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_cam", type=int, default=2, help="Eye camera index")
-    parser.add_argument("--front_cam", type=int, default=1, help="Front camera index")
+    parser.add_argument("--eye_cam", type=int, default=1, help="Eye camera index")
+    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[1280, 720], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
