@@ -2,8 +2,8 @@ import cv2
 import time
 
 def record_cameras():
-    eye_cam = cv2.VideoCapture(1)  # Adjust index if necessary
-    front_cam = cv2.VideoCapture(2)  # Adjust index if necessary
+    eye_cam = cv2.VideoCapture(2)  # Adjust index if necessary
+    front_cam = cv2.VideoCapture(1)  # Adjust index if necessary
     front_cam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
     if not eye_cam.isOpened() or not front_cam.isOpened():
         print("Failed to open one or both cameras")

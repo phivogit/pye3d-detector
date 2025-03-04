@@ -14,7 +14,7 @@ import queue
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodel01.joblib')
+        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -182,12 +182,12 @@ class FrontCamThread(threading.Thread):
                             print("Fan turned off")
                         else:
                             print(f"Fan speed set to {current_speed}")
-                    elif marker_id == 5:  # Light control
+                    elif marker_id == 3:  # Light control
                         self.light_on = not self.light_on
                         brightness = 150 if self.light_on else 0
                         self.controller.set_light(brightness)
                         print(f"Light {'turned on' if self.light_on else 'turned off'}")
-                elif marker_id == 3:  # Volume control
+                elif marker_id == 5:  # Volume control
                     if self.thumb_tip_prev is not None:
                         vertical_movement = thumb_tip.y - self.thumb_tip_prev
                         if abs(vertical_movement) > 0.01:
@@ -247,7 +247,7 @@ if __name__ == "__main__":
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
-    parser.add_argument("--device_ip", type=str, default="192.168.168.148", help="IP address of the fan/light controller")
+    parser.add_argument("--device_ip", type=str, default="192.168.89.148", help="IP address of the fan/light controller")
     args = parser.parse_args()
     
     main(args)

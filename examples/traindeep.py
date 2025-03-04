@@ -153,7 +153,7 @@ def visualize_predictions(model, data, num_samples=5):
 
 def main():
     # Load data
-    with open('eye_tracking_data2s.json', 'r') as f:
+    with open('eye_trackingX.json', 'r') as f:
         data = json.load(f)
     
     # Filter samples with confidence 1.0
