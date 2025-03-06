@@ -1,4 +1,6 @@
 import cv2
+import win32gui
+import win32con
 import threading
 import argparse
 import numpy as np
@@ -197,7 +199,7 @@ class GazeControlThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
+        lr_model = joblib.load('pye3d-detector\linearregressionmodelbucket.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -205,6 +207,23 @@ def load_linear_regression_model():
         print("Falling back to default gaze projection method.")
         return None
 
+class WindowNotFoundError(Exception):
+    """Raised when a specified window is not found."""
+    pass
+def bring_window_to_top(window_name):
+    def window_dict_handler(hwnd, top_windows):
+        top_windows[hwnd] = win32gui.GetWindowText(hwnd)
+    tw, expt = {}, True
+    win32gui.EnumWindows(window_dict_handler, tw)
+    for handle in tw:
+        if tw[handle] == window_name:
+            win32gui.ShowWindow(handle, win32con.SW_NORMAL)
+            win32gui.BringWindowToTop(handle)
+            win32gui.SetForegroundWindow(handle)
+            expt = False
+    if expt:
+        raise WindowNotFoundError(f"'{window_name}' does not appear to be a window.")
+    
 def main(args):
     shared_gaze_data = SharedGazeData()
 
@@ -220,18 +239,18 @@ def main(args):
                                is_eye_cam=True, focal_length=args.focal_length, 
                                shared_gaze_data=shared_gaze_data,
                                lr_model=lr_model)
-    front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
-                                 shared_gaze_data=shared_gaze_data,
-                                 camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
+    #front_cam_thread = CamThread("Front Camera", args.front_cam, args.front_res, 
+    #                             shared_gaze_data=shared_gaze_data,
+    #                             camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
     gaze_control_thread = GazeControlThread(shared_gaze_data, disable_failsafe=args.disable_failsafe)
-
+    bring_window_to_top("Roblox")
     eye_cam_thread.start()
-    front_cam_thread.start()
+    #front_cam_thread.start()
     gaze_control_thread.start()
 
     try:
         eye_cam_thread.join()
-        front_cam_thread.join()
+        #front_cam_thread.join()
         gaze_control_thread.join()
     except KeyboardInterrupt:
         print("Stopping threads...")
@@ -245,9 +264,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
     parser.add_argument("--eye_cam", type=int, default=1,help="Eye camera index")
-    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
+    #parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
-    parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
+    #parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
     parser.add_argument("--disable_failsafe", action="store_true", help="Disable PyAutoGUI fail-safe")
     args = parser.parse_args()
