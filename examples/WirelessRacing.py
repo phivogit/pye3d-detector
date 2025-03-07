@@ -206,36 +206,36 @@ def main(args):
                                is_eye_cam=True, focal_length=args.focal_length, 
                                shared_gaze_data=shared_gaze_data,
                                lr_model=lr_model)
-    front_cam_thread = CamThread("Front Camera", args.front_stream, args.front_res, 
-                                 shared_gaze_data=shared_gaze_data,
-                                 camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
+    #front_cam_thread = CamThread("Front Camera", args.front_stream, args.front_res, 
+    #                             shared_gaze_data=shared_gaze_data,
+    #                             camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
     gaze_control_thread = GazeControlThread(shared_gaze_data, disable_failsafe=args.disable_failsafe)
 
     eye_cam_thread.start()
-    front_cam_thread.start()
+    #front_cam_thread.start()
     gaze_control_thread.start()
 
     try:
         eye_cam_thread.join()
-        front_cam_thread.join()
+        #front_cam_thread.join()
         gaze_control_thread.join()
     except KeyboardInterrupt:
         print("Stopping threads...")
         eye_cam_thread.stop()
-        front_cam_thread.stop()
+        #front_cam_thread.stop()
         gaze_control_thread.stop()
         eye_cam_thread.join()
-        front_cam_thread.join()
+        #front_cam_thread.join()
         gaze_control_thread.join()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
     parser.add_argument("--eye_stream", type=str, default="http://192.168.1.120:8081/?action=stream",
                         help="Eye camera stream URL")
-    parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
-                        help="Front camera stream URL")
+    #parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
+    #                    help="Front camera stream URL")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
-    parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
+    #parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
     parser.add_argument("--disable_failsafe", action="store_true", help="Disable PyAutoGUI fail-safe")
     args = parser.parse_args()
