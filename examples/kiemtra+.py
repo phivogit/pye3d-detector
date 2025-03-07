@@ -73,7 +73,7 @@ def process_videos():
     front_video.release()
 
     # Load existing data if file exists
-    filename = 'eye_tracking_bucket2X.json'
+    filename = 'eye_tracking_bucketX.json'
     existing_data = []
     if os.path.exists(filename):
         with open(filename, 'r') as f:
