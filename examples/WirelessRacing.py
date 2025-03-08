@@ -1,4 +1,6 @@
 import cv2
+import win32gui
+import win32con
 import threading
 import argparse
 import numpy as np
@@ -191,6 +193,23 @@ def load_linear_regression_model():
         print("Falling back to default gaze projection method.")
         return None
 
+class WindowNotFoundError(Exception):
+    """Raised when a specified window is not found."""
+    pass
+def bring_window_to_top(window_name):
+    def window_dict_handler(hwnd, top_windows):
+        top_windows[hwnd] = win32gui.GetWindowText(hwnd)
+    tw, expt = {}, True
+    win32gui.EnumWindows(window_dict_handler, tw)
+    for handle in tw:
+        if tw[handle] == window_name:
+            win32gui.ShowWindow(handle, win32con.SW_NORMAL)
+            win32gui.BringWindowToTop(handle)
+            win32gui.SetForegroundWindow(handle)
+            expt = False
+    if expt:
+        raise WindowNotFoundError(f"'{window_name}' does not appear to be a window.")
+
 def main(args):
     shared_gaze_data = SharedGazeData()
 
@@ -210,7 +229,7 @@ def main(args):
     #                             shared_gaze_data=shared_gaze_data,
     #                             camera_matrix=camera_matrix, dist_coeffs=dist_coeffs)
     gaze_control_thread = GazeControlThread(shared_gaze_data, disable_failsafe=args.disable_failsafe)
-
+    bring_window_to_top("Roblox")
     eye_cam_thread.start()
     #front_cam_thread.start()
     gaze_control_thread.start()
@@ -230,7 +249,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.1.120:8081/?action=stream",
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.170.53:8081/?action=stream",
                         help="Eye camera stream URL")
     #parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
     #                    help="Front camera stream URL")
