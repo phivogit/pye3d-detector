@@ -125,7 +125,7 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
+        lr_model = joblib.load('linearregressionmodelbucketX.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -137,8 +137,8 @@ def main():
     shared_gaze_data = SharedGazeData()
 
     # Hardcoded HTTP stream URLs
-    eye_stream_url = "http://192.168.89.68:8081/?action=stream"
-    front_stream_url = "http://192.168.89.68:8080/?action=stream"
+    eye_stream_url = "http://192.168.170.53:8081/?action=stream"
+    front_stream_url = "http://192.168.170.53:8080/?action=stream"
 
     # Resolutions
     eye_resolution = (320, 240)
