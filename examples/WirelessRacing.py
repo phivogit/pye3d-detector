@@ -249,7 +249,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.170.53:8081/?action=stream",
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.89.68:8081/?action=stream",
                         help="Eye camera stream URL")
     #parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
     #                    help="Front camera stream URL")

@@ -185,12 +185,12 @@ class FrontCamThread(threading.Thread):
                             print("Fan turned off")
                         else:
                             print(f"Fan speed set to {current_speed}")
-                    elif marker_id == 5:  # Light control
+                    elif marker_id == 3:  # Light control
                         self.light_on = not self.light_on
                         brightness = 150 if self.light_on else 0
                         self.controller.set_light(brightness)
                         print(f"Light {'turned on' if self.light_on else 'turned off'}")
-                elif marker_id == 3:  # Volume control
+                elif marker_id == 5:  # Volume control
                     if self.thumb_tip_prev is not None:
                         vertical_movement = thumb_tip.y - self.thumb_tip_prev
                         if abs(vertical_movement) > 0.01:
