@@ -14,7 +14,7 @@ import queue
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelbucketx.joblib')
+        lr_model = joblib.load('linearregressionmodeldeepX.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
