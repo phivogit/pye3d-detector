@@ -245,12 +245,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Integrated Eye and Hand Control System")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.89.68:8081/?action=stream", help="Eye camera stream URL")
-    parser.add_argument("--front_stream", type=str, default="http://192.168.89.68:8080/?action=stream", help="Front camera stream URL")
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.195.53:8081/?action=stream", help="Eye camera stream URL")
+    parser.add_argument("--front_stream", type=str, default="http://192.168.195.53:8080/?action=stream", help="Front camera stream URL")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
-    parser.add_argument("--device_ip", type=str, default="192.168.89.148", help="IP address of the fan/light controller")
+    parser.add_argument("--device_ip", type=str, default="192.168.195.148", help="IP address of the fan/light controller")
     args = parser.parse_args()
     
     main(args)
