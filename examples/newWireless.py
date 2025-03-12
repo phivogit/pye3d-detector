@@ -1,9 +1,11 @@
 import cv2
+import cv2.aruco as aruco
 import threading
 import numpy as np
 from pupil_detectors.detector_2d import Detector2D
 from pye3d.detector_3d import CameraModel, Detector3D, DetectorMode
 import joblib
+import time  # Added for time.sleep
 
 class SharedGazeData:
     def __init__(self):
@@ -20,7 +22,7 @@ class SharedGazeData:
 
 class CamThread(threading.Thread):
     def __init__(self, preview_name, stream_url, is_eye_cam=False, focal_length=None, resolution=(640, 480), shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
-        threading.Thread.__init__(self)
+        super().__init__()
         self.preview_name = preview_name
         self.stream_url = stream_url
         self.is_eye_cam = is_eye_cam
@@ -36,6 +38,13 @@ class CamThread(threading.Thread):
             self.detector_2d = Detector2D()
             self.camera = CameraModel(focal_length=focal_length, resolution=resolution)
             self.detector_3d = Detector3D(camera=self.camera, long_term_mode=DetectorMode.blocking)
+
+        # Precompute font settings for cv2.putText
+        self.font = cv2.FONT_HERSHEY_SIMPLEX
+        self.font_scale = 0.7
+        self.font_color = (255, 255, 255)
+        self.font_thickness = 2
+        self.text_position = (10, 30)
 
     def run(self):
         print(f"Starting {self.preview_name}")
@@ -66,33 +75,33 @@ class CamThread(threading.Thread):
     def predict_gaze_point(self, gaze_normal):
         if self.lr_model is None:
             return None
-        
-        prediction = self.lr_model.predict([gaze_normal])[0]
-        return tuple(map(int, prediction))
+        return tuple(map(int, self.lr_model.predict([gaze_normal])[0]))
 
     def visualize_eye_result(self, frame, result_3d):
         if 'ellipse' in result_3d:
             ellipse = result_3d["ellipse"]
-            cv2.ellipse(frame, 
-                        tuple(int(v) for v in ellipse["center"]),
-                        tuple(int(v / 2) for v in ellipse["axes"]),
-                        ellipse["angle"], 0, 360, (0, 255, 0), 2)
+            center = tuple(int(v) for v in ellipse["center"])
+            axes = tuple(int(v / 2) for v in ellipse["axes"])
+            angle = ellipse["angle"]
+            cv2.ellipse(frame, center, axes, angle, 0, 360, (0, 255, 0), 2)
         return frame
 
     def cam_preview(self):
-        cam = cv2.VideoCapture(self.stream_url)
+        cam = cv2.VideoCapture(self.stream_url, cv2.CAP_FFMPEG)  # Use FFMPEG for MJPEG
         if not cam.isOpened():
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffering for latest frame
+        fps = 30  # Default FPS from mjpeg-streamer
         frame_count = 0
-        fps = cam.get(cv2.CAP_PROP_FPS) or 30  # Fallback to 30 FPS if server doesn't provide it
 
         while self.running:
             ret, frame = cam.read()
             if not ret:
                 print(f"Failed to grab frame from {self.preview_name}")
-                break
+                time.sleep(0.01)  # Brief sleep to avoid tight loop
+                continue
 
             if self.is_eye_cam:
                 result_3d = self.process_eye_frame(frame, frame_count, fps)
@@ -112,7 +121,8 @@ class CamThread(threading.Thread):
                 else:
                     self.debug_info = "No gaze point available"
 
-            cv2.putText(frame, self.debug_info, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            # Use precomputed font settings
+            cv2.putText(frame, self.debug_info, self.text_position, self.font, self.font_scale, self.font_color, self.font_thickness)
 
             cv2.imshow(self.preview_name, frame)
             if cv2.waitKey(1) & 0xFF == 27:  # Press 'Esc' to exit
@@ -137,8 +147,8 @@ def main():
     shared_gaze_data = SharedGazeData()
 
     # Hardcoded HTTP stream URLs
-    eye_stream_url = "http://192.168.170.53:8081/?action=stream"
-    front_stream_url = "http://192.168.170.53:8080/?action=stream"
+    eye_stream_url = "http://192.168.1.236:8081/?action=stream"
+    front_stream_url = "http://192.168.1.236:8080/?action=stream"
 
     # Resolutions
     eye_resolution = (320, 240)
@@ -146,8 +156,8 @@ def main():
 
     camera_matrix = np.array([[343.34511283, 0.0, 327.80111243],
                               [0.0, 342.79698299, 231.06509007],
-                              [0.0, 0.0, 1.0]])
-    dist_coeffs = np.array([0, 0, 0, -0.001, -0.0])
+                              [0.0, 0.0, 1.0]], dtype=np.float32)
+    dist_coeffs = np.array([0, 0, 0, -0.001, -0.0], dtype=np.float32)
 
     # Load the Linear Regression model
     lr_model = load_linear_regression_model()
