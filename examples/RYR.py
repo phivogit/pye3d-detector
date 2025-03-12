@@ -185,7 +185,7 @@ class VideoThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeepX.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -259,3 +259,4 @@ if __name__ == "__main__":
     
     #python examples/RYR.py --eye_video C:\Users\hungn\gaudau\pye3d-detector\camera2_320x240_20250307_193414.mp4 --front_video C:\Users\hungn\gaudau\pye3d-detector\camera1_640x480_20250307_193414.mp4
     #python examples/RYR.py --eye_video C:\Users\hungn\Downloads\camera2_320x240_20250310_100418.mp4 --front_video C:\Users\hungn\Downloads\camera1_640x480_20250310_100418.mp4
+    #python examples/RYR.py --eye_video C:\Users\hungn\Downloads\camera2_320x240_20250310_100418.mp4 --front_video C:\Users\hungn\Downloads\camera1_640x480_20250312_074712.mp4
