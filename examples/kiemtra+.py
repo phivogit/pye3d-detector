@@ -60,7 +60,7 @@ def process_videos():
                 confidence = result_3d['confidence']
                 sphere_center = result_3d['sphere']['center']
 
-                if confidence > 0.94:
+                if confidence > 0.95:
                     output_data.append({
                         'frame': frame_count,
                         'confidence': confidence,
@@ -73,7 +73,7 @@ def process_videos():
     front_video.release()
 
     # Load existing data if file exists
-    filename = 'eye_tracking_bucket1.json'
+    filename = 'eye_tracking_bucket5.json'
     existing_data = []
     if os.path.exists(filename):
         with open(filename, 'r') as f:
