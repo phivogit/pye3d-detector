@@ -244,7 +244,7 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelz.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket3.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -286,8 +286,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Gaze-controlled cursor system")
-    parser.add_argument("--eye_cam", type=int, default=2, help="Eye camera index")
-    parser.add_argument("--front_cam", type=int, default=1, help="Front camera index")
+    parser.add_argument("--eye_cam", type=int, default=1, help="Eye camera index")
+    parser.add_argument("--front_cam", type=int, default=2, help="Front camera index")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
