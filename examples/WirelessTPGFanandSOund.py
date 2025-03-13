@@ -32,7 +32,7 @@ class FanLightController:
     def set_speed(self, speed):
         if 0 <= speed <= 255:
             try:
-                response = self.session.get(f"{self.base_url}/setspeed?speed={speed}", timeout=0.1)
+                response = self.session.get(f"{self.base_url}/setspeed?speed={speed}", timeout=0.2)
                 print(response.text)
             except requests.RequestException:
                 pass  # Silently fail to avoid blocking
@@ -42,7 +42,7 @@ class FanLightController:
     def set_light(self, brightness):
         if 0 <= brightness <= 255:
             try:
-                response = self.session.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=0.1)
+                response = self.session.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=0.2)
                 print(response.text)
             except requests.RequestException:
                 pass
