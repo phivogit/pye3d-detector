@@ -11,8 +11,8 @@ def process_eye_frame(frame, detector_2d, detector_3d, frame_number, fps):
     return detector_3d.update_and_detect(result_2d, grayscale)
 
 def process_videos():
-    eye_video_path = r'C:\Users\hungn\gaudau\pye3d-detector\eye_output.avi'
-    front_video_path = r'C:\Users\hungn\gaudau\pye3d-detector\front_output.avi'
+    eye_video_path = r'D:\Hi\CD\TPG\code\MH\Latest\pye3d-detector\eye_output.avi'
+    front_video_path = r'D:\Hi\CD\TPG\code\MH\Latest\pye3d-detector\front_output.avi'
     eye_video = cv2.VideoCapture(eye_video_path)
     front_video = cv2.VideoCapture(front_video_path)
 
@@ -59,7 +59,7 @@ def process_videos():
                 confidence = result_3d['confidence']
                 sphere_center = result_3d['sphere']['center']
 
-                if confidence > 0.9:
+                if confidence > 0.95:
                     output_data.append({
                         'frame': frame_count,
                         'confidence': confidence,

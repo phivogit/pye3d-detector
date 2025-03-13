@@ -135,7 +135,7 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelbucket3.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
