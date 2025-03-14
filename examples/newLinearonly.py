@@ -135,12 +135,12 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelbucket6.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
         print(f"Failed to load Linear Regression model: {e}")
-        print("Falling back to default gaze projection method.")
+        print("Falling back to default gaze pro999999999999999ojection method.")
         return None
 
 def main(args):
