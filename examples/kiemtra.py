@@ -48,7 +48,7 @@ def process_videos():
         result_3d = process_eye_frame(eye_frame, detector_2d, detector_3d, frame_count, fps)
 
         # Only start recording data from frame 100 onwards
-        if frame_count >= 250:
+        if frame_count >= 150:
             # Process front camera frame for ArUco detection
             gray = cv2.cvtColor(front_frame, cv2.COLOR_BGR2GRAY)
             corners, ids, rejected = cv2.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
@@ -72,7 +72,7 @@ def process_videos():
     front_video.release()
 
     # Save the output data as JSON
-    with open('eye_tracking_bucket6.json', 'w') as f:
+    with open('eye_tracking_bucket7s.json', 'w') as f:
         json.dump(output_data, f, indent=2)
 
     print(f"Data saved to eye_tracking_datadeep2.json")
