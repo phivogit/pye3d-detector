@@ -92,7 +92,7 @@ class CamThread(threading.Thread):
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffering for latest frame
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering for latest frame
         fps = 30  # Default FPS from mjpeg-streamer
         frame_count = 0
 
@@ -135,7 +135,7 @@ class CamThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeepX.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -147,8 +147,8 @@ def main():
     shared_gaze_data = SharedGazeData()
 
     # Hardcoded HTTP stream URLs
-    eye_stream_url = "http://192.168.1.236:8081/?action=stream"
-    front_stream_url = "http://192.168.1.236:8080/?action=stream"
+    eye_stream_url = "http://192.168.128.53:8081/?action=stream"
+    front_stream_url = "http://192.168.128.53:8080/?action=stream"
 
     # Resolutions
     eye_resolution = (320, 240)
