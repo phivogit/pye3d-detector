@@ -255,8 +255,8 @@ def main(args):
     gaze_queue = Queue(maxsize=1)
     controller = FanLightController(args.device_ip)
 
-    eye_stream_url = "http://192.168.128.53:8081/?action=stream"
-    front_stream_url = "http://192.168.128.53:8080/?action=stream"
+    eye_stream_url = "http://192.168.172.53:8081/?action=stream"
+    front_stream_url = "http://192.168.172.53:8080/?action=stream"
 
     eye_cam_thread = EyeCamThread(eye_stream_url, args.eye_res, args.focal_length, gaze_queue)
     front_cam_thread = FrontCamThread(front_stream_url, args.front_res, gaze_queue, controller)
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
-    parser.add_argument("--device_ip", type=str, default="192.168.128.148", help="IP address of the fan/light controller")
+    parser.add_argument("--device_ip", type=str, default="192.168.172.148", help="IP address of the fan/light controller")
     args = parser.parse_args()
     
     main(args)

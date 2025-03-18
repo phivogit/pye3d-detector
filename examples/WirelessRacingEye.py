@@ -24,7 +24,7 @@ class SharedGazeData:
             return self.gaze_point
 
 class CamThread(threading.Thread):
-    def __init__(self, preview_name, stream_url, resolution, is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
+    def __init__(self, preview_name, stream_url, resolution=(640, 480), is_eye_cam=False, focal_length=None, shared_gaze_data=None, camera_matrix=None, dist_coeffs=None, lr_model=None):
         threading.Thread.__init__(self)
         self.preview_name = preview_name
         self.stream_url = stream_url
@@ -52,10 +52,10 @@ class CamThread(threading.Thread):
         if self.w_pressed:
             keyboard.release('w')
 
-    def process_eye_frame(self, frame, frame_number):
+    def process_eye_frame(self, frame, frame_number, fps):
         grayscale = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         result_2d = self.detector_2d.detect(grayscale)
-        result_2d["timestamp"] = frame_number
+        result_2d["timestamp"] = frame_number / fps
         result_3d = self.detector_3d.update_and_detect(result_2d, grayscale)
         
         if result_3d['confidence'] < 0.6:
@@ -86,6 +86,15 @@ class CamThread(threading.Thread):
         prediction = self.lr_model.predict([gaze_normal])[0]
         return tuple(map(int, prediction))
 
+    def visualize_eye_result(self, frame, result_3d):
+        if 'ellipse' in result_3d:
+            ellipse = result_3d["ellipse"]
+            cv2.ellipse(frame, 
+                        tuple(int(v) for v in ellipse["center"]),
+                        tuple(int(v / 2) for v in ellipse["axes"]),
+                        ellipse["angle"], 0, 360, (0, 255, 0), 2)
+        return frame
+
     def cam_preview(self):
         cam = cv2.VideoCapture(self.stream_url)
         if not cam.isOpened():
@@ -93,6 +102,7 @@ class CamThread(threading.Thread):
             return
 
         frame_count = 0
+        fps = cam.get(cv2.CAP_PROP_FPS) or 30  # Fallback to 30 FPS if server doesn't provide it
 
         while self.running:
             ret, frame = cam.read()
@@ -104,7 +114,8 @@ class CamThread(threading.Thread):
             frame = cv2.resize(frame, (self.resolution[0], self.resolution[1]))
 
             if self.is_eye_cam:
-                result_3d = self.process_eye_frame(frame, frame_count)
+                result_3d = self.process_eye_frame(frame, frame_count, fps)
+                frame = self.visualize_eye_result(frame, result_3d)
             else:
                 if self.camera_matrix is not None and self.dist_coeffs is not None:
                     frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
@@ -148,14 +159,14 @@ class GazeControlThread(threading.Thread):
                 if gaze_point:
                     x = gaze_point[0]
 
-                    if x < 240:
+                    if x < 270:
                         if not self.left_pressed:
                             keyboard.press('a')
                             self.left_pressed = True
                         if self.right_pressed:
                             keyboard.release('d')
                             self.right_pressed = False
-                    elif x > 420:
+                    elif x > 370:
                         if not self.right_pressed:
                             keyboard.press('d')
                             self.right_pressed = True
@@ -185,7 +196,7 @@ class GazeControlThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
+        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -208,7 +219,8 @@ def bring_window_to_top(window_name):
             win32gui.SetForegroundWindow(handle)
             expt = False
     if expt:
-        raise WindowNotFoundError(f"'{window_name}' does not appear to be a window.")
+        #raise WindowNotFoundError(f"'{window_name}' does not appear to be a window.")
+        pass
 
 def main(args):
     shared_gaze_data = SharedGazeData()
@@ -249,7 +261,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.172.53:8081/?action=stream",
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.2.68:8081/?action=stream",
                         help="Eye camera stream URL")
     #parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
     #                    help="Front camera stream URL")
