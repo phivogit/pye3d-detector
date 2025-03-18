@@ -28,15 +28,25 @@ class FanLightController:
 
     def set_speed(self, speed):
         if 0 <= speed <= 255:
-            response = requests.get(f"{self.base_url}/setspeed?speed={speed}", timeout=0.1)
-            print(response.text)
+            try:
+                response = requests.get(f"{self.base_url}/setspeed?speed={speed}", timeout=1.0)
+                print(response.text)
+            except requests.exceptions.ConnectTimeout:
+                print(f"Connection timeout: Could not reach {self.base_url}/setspeed?speed={speed}")
+            except Exception as e:
+                print(f"Error setting speed: {e}")
         else:
             print("Speed must be between 0 and 255")
 
     def set_light(self, brightness):
         if 0 <= brightness <= 255:
-            response = requests.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=0.1)
-            print(response.text)
+            try:
+                response = requests.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=1.0)
+                print(response.text)
+            except requests.exceptions.ConnectTimeout:
+                print(f"Connection timeout: Could not reach {self.base_url}/setlight?brightness={brightness}")
+            except Exception as e:
+                print(f"Error setting light: {e}")
         else:
             print("Brightness must be between 0 and 255")
 
@@ -59,8 +69,8 @@ class EyeCamThread(threading.Thread):
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering
-        fps = 30  # Default FPS from mjpeg-streamer
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+        fps = 30
         frame_count = 0
 
         while self.running:
@@ -125,11 +135,10 @@ class FrontCamThread(threading.Thread):
         self.fan_on = False
         self.light_on = False
         self.last_index_y = None
-        self.fan_speeds = [150, 200, 120, 0]  # Available fan speeds
-        self.current_speed_index = 3  # Start with fan off
+        self.fan_speeds = [150, 200, 120, 0]
+        self.current_speed_index = 3
         self.thumb_tip_prev = None
 
-        # Precompute font settings for cv2.putText
         self.font = cv2.FONT_HERSHEY_SIMPLEX
         self.font_scale = 0.7
         self.font_color = (255, 255, 255)
@@ -142,7 +151,7 @@ class FrontCamThread(threading.Thread):
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)
         gaze_point = None
         debug_info = ""
 
@@ -156,35 +165,30 @@ class FrontCamThread(threading.Thread):
             frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            # Get latest gaze point without blocking
             try:
                 gaze_point = self.gaze_queue.get_nowait()
             except queue.Empty:
                 pass
 
-            # Process ArUco markers and hand detection
             corners, ids, _ = aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
             results = self.hands.process(image_rgb)
 
-            # Render gaze point
             if gaze_point is not None and 0 <= gaze_point[0] < frame.shape[1] and 0 <= gaze_point[1] < frame.shape[0]:
                 cv2.circle(frame, gaze_point, 15, (0, 0, 255), -1)
                 debug_info = f"Gaze: {gaze_point}"
             else:
                 debug_info = "No valid gaze point"
 
-            # Process markers if gaze point is valid
             if gaze_point is not None and ids is not None:
                 for i, corner in enumerate(corners):
                     if self.point_in_polygon(gaze_point, corner[0]):
                         marker_id = ids[i][0]
                         self.process_marker_action(marker_id, results)
 
-            # Add debug info
             cv2.putText(frame, debug_info, self.text_position, self.font, self.font_scale, self.font_color, self.font_thickness)
 
             cv2.imshow('Front Camera', frame)
-            if cv2.waitKey(1) & 0xFF == 27:  # Press 'Esc' to exit
+            if cv2.waitKey(1) & 0xFF == 27:
                 break
 
         cam.release()
@@ -201,7 +205,7 @@ class FrontCamThread(threading.Thread):
             if distance < 0.035:
                 if not self.pinch_detected:
                     self.pinch_detected = True
-                    if marker_id == 2:  # Fan control
+                    if marker_id == 2:
                         self.current_speed_index = (self.current_speed_index + 1) % len(self.fan_speeds)
                         current_speed = self.fan_speeds[self.current_speed_index]
                         self.controller.set_speed(current_speed)
@@ -209,12 +213,12 @@ class FrontCamThread(threading.Thread):
                             print("Fan turned off")
                         else:
                             print(f"Fan speed set to {current_speed}")
-                    elif marker_id == 3:  # Light control
+                    elif marker_id == 3:
                         self.light_on = not self.light_on
                         brightness = 150 if self.light_on else 0
                         self.controller.set_light(brightness)
                         print(f"Light {'turned on' if self.light_on else 'turned off'}")
-                elif marker_id == 5:  # Volume control
+                elif marker_id == 5:
                     if self.thumb_tip_prev is not None:
                         vertical_movement = thumb_tip.y - self.thumb_tip_prev
                         if abs(vertical_movement) > 0.01:
@@ -251,7 +255,6 @@ def main(args):
     gaze_queue = Queue(maxsize=1)
     controller = FanLightController(args.device_ip)
 
-    # Hardcoded MJPEG stream URLs (adjust as needed)
     eye_stream_url = "http://192.168.128.53:8081/?action=stream"
     front_stream_url = "http://192.168.128.53:8080/?action=stream"
 
