@@ -14,7 +14,7 @@ import queue
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeepX.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -27,14 +27,14 @@ class FanLightController:
 
     def set_speed(self, speed):
         if 0 <= speed <= 255:
-            response = requests.get(f"{self.base_url}/setspeed?speed={speed}")
+            response = requests.get(f"{self.base_url}/setspeed?speed={speed}", timeout=0.1)
             print(response.text)
         else:
             print("Speed must be between 0 and 255")
 
     def set_light(self, brightness):
         if 0 <= brightness <= 255:
-            response = requests.get(f"{self.base_url}/setlight?brightness={brightness}")
+            response = requests.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=0.1)
             print(response.text)
         else:
             print("Brightness must be between 0 and 255")
@@ -53,23 +53,28 @@ class EyeCamThread(threading.Thread):
         self.lr_model = load_linear_regression_model()
 
     def run(self):
-        cam = cv2.VideoCapture(self.stream_url)
+        cam = cv2.VideoCapture(self.stream_url, cv2.CAP_FFMPEG)
         if not cam.isOpened():
             print(f"Error: Could not open stream {self.stream_url}")
             return
-            
-        fps = cam.get(cv2.CAP_PROP_FPS) or 30
+
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering
+        fps = 30  # Default FPS from mjpeg-streamer
         frame_count = 0
 
         while self.running:
             ret, frame = cam.read()
             if not ret:
                 print("Failed to grab frame from eye camera")
-                break
+                time.sleep(0.01)
+                continue
 
             gaze_point = self.process_eye_frame(frame, frame_count, fps)
             if gaze_point is not None:
-                self.gaze_queue.put(gaze_point)
+                try:
+                    self.gaze_queue.put_nowait(gaze_point)
+                except queue.Full:
+                    pass
 
             frame_count += 1
 
@@ -106,8 +111,8 @@ class FrontCamThread(threading.Thread):
 
         self.camera_matrix = np.array([[343.34511283, 0.0, 327.80111243],
                                      [0.0, 342.79698299, 231.06509007],
-                                     [0.0, 0.0, 1.0]])
-        self.dist_coeffs = np.array([0, 0, 0, -0.001, -0.0])
+                                     [0.0, 0.0, 1.0]], dtype=np.float32)
+        self.dist_coeffs = np.array([0, 0, 0, -0.001, -0.0], dtype=np.float32)
 
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_5X5_250)
         self.aruco_params = aruco.DetectorParameters()
@@ -119,9 +124,16 @@ class FrontCamThread(threading.Thread):
         self.fan_on = False
         self.light_on = False
         self.last_index_y = None
-        self.fan_speeds = [150, 200, 120, 0]
-        self.current_speed_index = 3
+        self.fan_speeds = [150, 200, 120, 0]  # Available fan speeds
+        self.current_speed_index = 3  # Start with fan off
         self.thumb_tip_prev = None
+
+        # Precompute font settings for cv2.putText
+        self.font = cv2.FONT_HERSHEY_SIMPLEX
+        self.font_scale = 0.7
+        self.font_color = (255, 255, 255)
+        self.font_thickness = 2
+        self.text_position = (10, 30)
 
     def run(self):
         cam = cv2.VideoCapture(self.stream_url)
@@ -129,7 +141,9 @@ class FrontCamThread(threading.Thread):
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering
         gaze_point = None
+        debug_info = ""
 
         while self.running:
             ret, frame = cam.read()
@@ -140,26 +154,35 @@ class FrontCamThread(threading.Thread):
             frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            corners, ids, _ = aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
-            results = self.hands.process(image_rgb)
-
+            # Get latest gaze point without blocking
             try:
                 gaze_point = self.gaze_queue.get_nowait()
             except queue.Empty:
                 pass
 
-            if gaze_point is not None:
-                if 0 <= gaze_point[0] < frame.shape[1] and 0 <= gaze_point[1] < frame.shape[0]:
-                    cv2.circle(frame, gaze_point, 15, (0, 0, 255), -1)
-                
-                if ids is not None:
-                    for i, corner in enumerate(corners):
-                        if self.point_in_polygon(gaze_point, corner[0]):
-                            marker_id = ids[i][0]
-                            self.process_marker_action(marker_id, results)
+            # Process ArUco markers and hand detection
+            corners, ids, _ = aruco.detectMarkers(frame, self.aruco_dict, parameters=self.aruco_params)
+            results = self.hands.process(image_rgb)
+
+            # Render gaze point
+            if gaze_point is not None and 0 <= gaze_point[0] < frame.shape[1] and 0 <= gaze_point[1] < frame.shape[0]:
+                cv2.circle(frame, gaze_point, 15, (0, 0, 255), -1)
+                debug_info = f"Gaze: {gaze_point}"
+            else:
+                debug_info = "No valid gaze point"
+
+            # Process markers if gaze point is valid
+            if gaze_point is not None and ids is not None:
+                for i, corner in enumerate(corners):
+                    if self.point_in_polygon(gaze_point, corner[0]):
+                        marker_id = ids[i][0]
+                        self.process_marker_action(marker_id, results)
+
+            # Add debug info
+            cv2.putText(frame, debug_info, self.text_position, self.font, self.font_scale, self.font_color, self.font_thickness)
 
             cv2.imshow('Front Camera', frame)
-            if cv2.waitKey(5) & 0xFF == 27:
+            if cv2.waitKey(1) & 0xFF == 27:  # Press 'Esc' to exit
                 break
 
         cam.release()
@@ -167,7 +190,7 @@ class FrontCamThread(threading.Thread):
 
     # [Rest of the FrontCamThread methods remain the same]
     def process_marker_action(self, marker_id, hand_results):
-        if hand_results.multi_hand_landmarks:
+        if hand_results and hand_results.multi_hand_landmarks:
             hand_landmarks = hand_results.multi_hand_landmarks[0]
             thumb_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.THUMB_TIP]
             index_tip = hand_landmarks.landmark[self.mp_hands.HandLandmark.INDEX_FINGER_TIP]
@@ -227,8 +250,12 @@ def main(args):
     gaze_queue = Queue(maxsize=1)
     controller = FanLightController(args.device_ip)
 
-    eye_cam_thread = EyeCamThread(args.eye_stream, args.eye_res, args.focal_length, gaze_queue)
-    front_cam_thread = FrontCamThread(args.front_stream, args.front_res, gaze_queue, controller)
+    # Hardcoded MJPEG stream URLs (adjust as needed)
+    eye_stream_url = "http://192.168.128.53:8081/?action=stream"
+    front_stream_url = "http://192.168.128.53:8080/?action=stream"
+
+    eye_cam_thread = EyeCamThread(eye_stream_url, args.eye_res, args.focal_length, gaze_queue)
+    front_cam_thread = FrontCamThread(front_stream_url, args.front_res, gaze_queue, controller)
 
     eye_cam_thread.start()
     front_cam_thread.start()
@@ -244,13 +271,11 @@ def main(args):
         front_cam_thread.join()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Integrated Eye and Hand Control System")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.89.68:8081/?action=stream", help="Eye camera stream URL")
-    parser.add_argument("--front_stream", type=str, default="http://192.168.89.68:8080/?action=stream", help="Front camera stream URL")
+    parser = argparse.ArgumentParser(description="Wireless Eye and Hand Control System with MJPEG Streams")
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
-    parser.add_argument("--device_ip", type=str, default="192.168.89.148", help="IP address of the fan/light controller")
+    parser.add_argument("--device_ip", type=str, default="192.168.128.148", help="IP address of the fan/light controller")
     args = parser.parse_args()
     
     main(args)

@@ -148,14 +148,14 @@ class GazeControlThread(threading.Thread):
                 if gaze_point:
                     x = gaze_point[0]
 
-                    if x < 270:
+                    if x < 240:
                         if not self.left_pressed:
                             keyboard.press('a')
                             self.left_pressed = True
                         if self.right_pressed:
                             keyboard.release('d')
                             self.right_pressed = False
-                    elif x > 370:
+                    elif x > 420:
                         if not self.right_pressed:
                             keyboard.press('d')
                             self.right_pressed = True
@@ -185,7 +185,7 @@ class GazeControlThread(threading.Thread):
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodeldeep2.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -249,7 +249,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dual camera eye tracking system")
-    parser.add_argument("--eye_stream", type=str, default="http://192.168.2.68:8081/?action=stream",
+    parser.add_argument("--eye_stream", type=str, default="http://192.168.128.53:8081/?action=stream",
                         help="Eye camera stream URL")
     #parser.add_argument("--front_stream", type=str, default="http://192.168.1.120:8080/?action=stream",
     #                    help="Front camera stream URL")

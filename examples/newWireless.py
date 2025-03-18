@@ -92,7 +92,7 @@ class CamThread(threading.Thread):
             print(f"Error: Could not open stream {self.stream_url}")
             return
 
-        cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimize buffering for latest frame
+        cam.set(cv2.CAP_PROP_BUFFERSIZE, 2)  # Minimize buffering for latest frame
         fps = 30  # Default FPS from mjpeg-streamer
         frame_count = 0
 
