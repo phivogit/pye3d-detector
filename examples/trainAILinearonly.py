@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 import joblib
 
 # Load the data from JSON file
-with open('eye_tracking_bucket5.json', 'r') as f:
+with open('eye_tracking_bucketX.json', 'r') as f:
     data = json.load(f)
 
 # Extract features (gaze_direction) and targets (marker_position)
@@ -38,6 +38,6 @@ print("\nR-squared score:")
 print(r2)
 
 # Save the model
-joblib.dump(lr_model, 'linearregressionmodelbucket5.joblib')
+joblib.dump(lr_model, 'linearregressionmodelbucketX.joblib')
 
 print("\nLinear Regression model saved.")
