@@ -20,7 +20,7 @@ class FanLightController:
 
 # Usage example
 if __name__ == "__main__":
-    device_ip = "192.168.128.148"  # Replace with your ESP32's IP address
+    device_ip = "192.168.172.148"  # Replace with your ESP32's IP address
     controller = FanLightController(device_ip)
 
     while True:

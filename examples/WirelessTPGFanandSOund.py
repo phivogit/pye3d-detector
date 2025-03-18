@@ -11,6 +11,7 @@ import joblib
 import pyautogui
 import requests
 import queue
+import time
 
 def load_linear_regression_model():
     try:
@@ -27,14 +28,14 @@ class FanLightController:
 
     def set_speed(self, speed):
         if 0 <= speed <= 255:
-            response = requests.get(f"{self.base_url}/setspeed?speed={speed}", timeout=0.1)
+            response = requests.get(f"{self.base_url}/setspeed?speed={speed}", timeout=5)
             print(response.text)
         else:
             print("Speed must be between 0 and 255")
 
     def set_light(self, brightness):
         if 0 <= brightness <= 255:
-            response = requests.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=0.1)
+            response = requests.get(f"{self.base_url}/setlight?brightness={brightness}", timeout=2)
             print(response.text)
         else:
             print("Brightness must be between 0 and 255")
@@ -136,7 +137,7 @@ class FrontCamThread(threading.Thread):
         self.text_position = (10, 30)
 
     def run(self):
-        cam = cv2.VideoCapture(self.stream_url)
+        cam = cv2.VideoCapture(self.stream_url, cv2.CAP_FFMPEG)
         if not cam.isOpened():
             print(f"Error: Could not open stream {self.stream_url}")
             return
@@ -149,7 +150,8 @@ class FrontCamThread(threading.Thread):
             ret, frame = cam.read()
             if not ret:
                 print("Failed to grab frame from front camera")
-                break
+                time.sleep(0.01)
+                continue
 
             frame = cv2.undistort(frame, self.camera_matrix, self.dist_coeffs)
             image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -188,7 +190,6 @@ class FrontCamThread(threading.Thread):
         cam.release()
         cv2.destroyAllWindows()
 
-    # [Rest of the FrontCamThread methods remain the same]
     def process_marker_action(self, marker_id, hand_results):
         if hand_results and hand_results.multi_hand_landmarks:
             hand_landmarks = hand_results.multi_hand_landmarks[0]
@@ -251,8 +252,8 @@ def main(args):
     controller = FanLightController(args.device_ip)
 
     # Hardcoded MJPEG stream URLs (adjust as needed)
-    eye_stream_url = "http://192.168.128.53:8081/?action=stream"
-    front_stream_url = "http://192.168.128.53:8080/?action=stream"
+    eye_stream_url = "http://192.168.172.53:8081/?action=stream"
+    front_stream_url = "http://192.168.172.53:8080/?action=stream"
 
     eye_cam_thread = EyeCamThread(eye_stream_url, args.eye_res, args.focal_length, gaze_queue)
     front_cam_thread = FrontCamThread(front_stream_url, args.front_res, gaze_queue, controller)
@@ -275,7 +276,7 @@ if __name__ == "__main__":
     parser.add_argument("--eye_res", nargs=2, type=int, default=[320, 240], help="Eye camera resolution")
     parser.add_argument("--front_res", nargs=2, type=int, default=[640, 480], help="Front camera resolution")
     parser.add_argument("--focal_length", type=float, default=84, help="Focal length of the eye camera")
-    parser.add_argument("--device_ip", type=str, default="192.168.128.148", help="IP address of the fan/light controller")
+    parser.add_argument("--device_ip", type=str, default="192.168.172.148", help="IP address of the fan/light controller")
     args = parser.parse_args()
     
     main(args)
