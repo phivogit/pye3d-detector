@@ -15,7 +15,7 @@ import time
 
 def load_linear_regression_model():
     try:
-        lr_model = joblib.load('linearregressionmodelbucket5.joblib')
+        lr_model = joblib.load('linearregressionmodelbucket8.joblib')
         print("Linear Regression model loaded successfully.")
         return lr_model
     except Exception as e:
@@ -119,13 +119,13 @@ class FrontCamThread(threading.Thread):
         self.aruco_params = aruco.DetectorParameters()
 
         self.mp_hands = mp.solutions.hands
-        self.hands = self.mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.8, min_tracking_confidence=0.8)
+        self.hands = self.mp_hands.Hands(max_num_hands=1, min_detection_confidence=0.6, min_tracking_confidence=0.6)
         
         self.pinch_detected = False
         self.fan_on = False
         self.light_on = False
         self.last_index_y = None
-        self.fan_speeds = [150, 200, 120, 0]  # Available fan speeds
+        self.fan_speeds = [200, 150, 120, 0]  # Available fan speeds
         self.current_speed_index = 3  # Start with fan off
         self.thumb_tip_prev = None
 
@@ -211,7 +211,7 @@ class FrontCamThread(threading.Thread):
                             print(f"Fan speed set to {current_speed}")
                     elif marker_id == 3:  # Light control
                         self.light_on = not self.light_on
-                        brightness = 150 if self.light_on else 0
+                        brightness = 30 if self.light_on else 0
                         self.controller.set_light(brightness)
                         print(f"Light {'turned on' if self.light_on else 'turned off'}")
                 elif marker_id == 5:  # Volume control
